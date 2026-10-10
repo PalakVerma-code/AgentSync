@@ -30,6 +30,7 @@ class MemoryManager:
             logger.error(f"Failed to initialize memory DB: {e}")
 
     def save_workflow(self, state: dict):
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -40,18 +41,21 @@ class MemoryManager:
             ''', (
                 state.get("user_request", ""),
                 state.get("plan", ""),
-                state.get("research_results", ""),
+                state.get("investigation_results", ""),  # fixed: was "research_results"
                 state.get("analysis", ""),
                 state.get("decision", "")
             ))
             conn.commit()
-            conn.close()
             logger.info("Saved workflow to long-term memory.")
         except Exception as e:
             logger.error(f"Failed to save to memory DB: {e}")
+        finally:
+            if conn:
+                conn.close()
 
     def get_past_decisions(self, keyword: str):
         """Retrieve past decisions related to a keyword to avoid redundant work."""
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -60,10 +64,12 @@ class MemoryManager:
                 WHERE user_request LIKE ? ORDER BY timestamp DESC LIMIT 3
             ''', (f"%{keyword}%",))
             results = cursor.fetchall()
-            conn.close()
             return results
         except Exception as e:
             logger.error(f"Failed to retrieve from memory DB: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
 
 memory_manager = MemoryManager()

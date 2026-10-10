@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,10 +9,20 @@ import uuid
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events."""
+    try:
+        settings.validate()
+    except ValueError as e:
+        print(f"Startup Warning: {e}")
+    yield  # Application runs here
+
 app = FastAPI(
     title="AgentSync Enterprise API",
     description="API layer for AgentSync Coordination & Decision Engine",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware to allow the frontend to communicate with the API
@@ -40,17 +51,10 @@ class WorkflowResponse(BaseModel):
     execution_metrics: Dict[str, Any] = {}
     errors: List[str] = []
 
-@app.on_event("startup")
-async def startup_event():
-    try:
-        settings.validate()
-    except ValueError as e:
-        print(f"Startup Error: {e}")
-
 @app.post("/workflow/run", response_model=WorkflowResponse)
-def run_workflow(req: WorkflowRequest):
-    if not req.request_text:
-        raise HTTPException(status_code=400, detail="request_text is required.")
+async def run_workflow(req: WorkflowRequest):
+    if not req.request_text or not req.request_text.strip():
+        raise HTTPException(status_code=400, detail="request_text is required and cannot be blank.")
         
     job_id = str(uuid.uuid4())
     workflow_jobs[job_id] = {"status": "Running"}
