@@ -33,13 +33,13 @@ def manage_incident(action: str, details: str) -> str:
         
         if action == "create":
             status = "Open"
-            msg = f"Incident created successfully. Ticket ID: {ticket_id}. Status: {status}. Details logged: {details}"
+            msg = f"Incident created successfully. Ticket ID: {ticket_id}. Status: {status}. Timestamp: {timestamp}. Details logged: {details}"
         elif action == "escalate":
             status = "Escalated"
-            msg = f"Incident escalated successfully. Ticket ID referenced. Status: {status}. Escalation notes: {details}"
+            msg = f"Incident escalated successfully. Ticket ID: {ticket_id}. Status: {status}. Timestamp: {timestamp}. Escalation notes: {details}"
         elif action == "resolve":
             status = "Resolved"
-            msg = f"Incident resolved successfully. Ticket ID referenced. Status: {status}. Resolution notes: {details}"
+            msg = f"Incident resolved successfully. Ticket ID: {ticket_id}. Status: {status}. Timestamp: {timestamp}. Resolution notes: {details}"
             
         logger.info(msg)
         return msg

@@ -28,9 +28,11 @@ def evaluate_risk(state: AgentState) -> AgentState:
 def route_after_risk(state: AgentState):
     status = state.get("workflow_status", "")
     if "High Risk" in status:
-        return END  # Or route to human review
+        # Still route through Decision Agent so a complete response is always returned.
+        # The system prompt already instructs it to escalate high-risk findings.
+        return "decision"
     elif "Medium Risk" in status:
-        return "investigation" # Additional investigation
+        return "investigation"  # Additional investigation pass
     else:
         return "decision"
 
@@ -54,7 +56,6 @@ def build_workflow():
         "risk_evaluation",
         route_after_risk,
         {
-            END: END,
             "investigation": "investigation",
             "decision": "decision"
         }
