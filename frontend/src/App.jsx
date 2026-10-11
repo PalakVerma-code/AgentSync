@@ -1,16 +1,51 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { 
-  Activity, Play, Server, TerminalSquare, Clock, AlertTriangle, 
-  Layers, Search, Bell, User, LayoutDashboard, AlertCircle, 
+import {
+  Activity, Play, Server, TerminalSquare, Clock, AlertTriangle,
+  Layers, Search, Bell, User, LayoutDashboard, AlertCircle,
   Settings, History, MessageSquare, Send, ChevronRight, CheckCircle2,
-  Cpu, FileTerminal, ShieldAlert, Database, Network
+  Cpu, FileTerminal, ShieldAlert, Database, Network, Wrench, Zap,
+  TrendingUp, RefreshCw, BookOpen, Globe, GitMerge, BarChart3,
+  Package, CheckCircle, XCircle, Info, ArrowUpRight
 } from 'lucide-react';
 import './App.css';
 
 const API_BASE = "http://127.0.0.1:8000";
+
+// ─── Reusable Components ──────────────────────────────────────────────────────
+
+function StatCard({ icon: Icon, value, label, color = "#58a6ff", trend }) {
+  return (
+    <div className="metric-box">
+      <div className="metric-icon-wrap" style={{ background: `${color}22`, border: `1px solid ${color}44` }}>
+        <Icon size={22} color={color} />
+      </div>
+      <div>
+        <div className="metric-val">{value}</div>
+        <div className="metric-label">{label}</div>
+        {trend && <div className="metric-trend">{trend}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ToolCategoryBadge({ category }) {
+  const colors = {
+    Observability: { bg: 'rgba(88,166,255,0.15)', text: '#58a6ff', border: 'rgba(88,166,255,0.3)' },
+    Knowledge: { bg: 'rgba(163,113,247,0.15)', text: '#a371f7', border: 'rgba(163,113,247,0.3)' },
+    Action: { bg: 'rgba(63,185,80,0.15)', text: '#3fb950', border: 'rgba(63,185,80,0.3)' },
+  };
+  const c = colors[category] || colors.Action;
+  return (
+    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+      {category}
+    </span>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
 
 function App() {
   const [currentView, setCurrentView] = useState("active_incidents");
@@ -21,7 +56,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [activeTab, setActiveTab] = useState("plan");
-  
+
   // Follow-up chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
@@ -31,42 +66,88 @@ function App() {
 
   // Agent Fleet State
   const [agents, setAgents] = useState([]);
-  
+  const [agentsLoading, setAgentsLoading] = useState(false);
+
   // History State
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyTotal, setHistoryTotal] = useState(0);
 
-  // Fetch Agents
-  const fetchAgents = async () => {
+  // Dashboard Metrics State
+  const [metrics, setMetrics] = useState(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [apiHealth, setApiHealth] = useState(null);
+
+  // Tools State
+  const [tools, setTools] = useState([]);
+  const [toolsLoading, setToolsLoading] = useState(false);
+
+  // ─── Data Fetchers ──────────────────────────────────────────────────────────
+
+  const fetchAgents = useCallback(async () => {
+    setAgentsLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/agents`);
       setAgents(res.data.agents || []);
     } catch (e) {
       console.error(e);
+    } finally {
+      setAgentsLoading(false);
     }
-  };
+  }, []);
 
-  // Fetch History
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/incidents/history`);
+      const res = await axios.get(`${API_BASE}/incidents/history?limit=25`);
       setHistory(res.data.history || []);
+      setHistoryTotal(res.data.total || 0);
     } catch (e) {
       console.error(e);
     } finally {
       setHistoryLoading(false);
     }
-  };
+  }, []);
+
+  const fetchMetrics = useCallback(async () => {
+    setMetricsLoading(true);
+    try {
+      const [metricsRes, healthRes] = await Promise.all([
+        axios.get(`${API_BASE}/metrics`),
+        axios.get(`${API_BASE}/health`)
+      ]);
+      setMetrics(metricsRes.data);
+      setApiHealth(healthRes.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, []);
+
+  const fetchTools = useCallback(async () => {
+    setToolsLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/tools`);
+      setTools(res.data.tools || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setToolsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (currentView === "agent_fleet") fetchAgents();
     if (currentView === "history") fetchHistory();
-  }, [currentView]);
+    if (currentView === "dashboard") fetchMetrics();
+    if (currentView === "tools") fetchTools();
+  }, [currentView, fetchAgents, fetchHistory, fetchMetrics, fetchTools]);
+
+  // ─── Workflow ───────────────────────────────────────────────────────────────
 
   const runWorkflow = async () => {
     if (!requestText.trim()) return;
-
     setLoading(true);
     setResult(null);
     setChatActive(false);
@@ -74,16 +155,13 @@ function App() {
     setActiveTab("plan");
 
     try {
-      const res = await axios.post(`${API_BASE}/workflow/run`, {
-        request_text: requestText
-      });
+      const res = await axios.post(`${API_BASE}/workflow/run`, { request_text: requestText });
       setResult(res.data);
       setJobId(res.data.job_id);
       setChatMessages([
         { role: 'ai', content: res.data.decision || "Workflow complete. How would you like to proceed with this resolution?" }
       ]);
     } catch (error) {
-      console.error("Workflow failed", error);
       setResult({
         status: "Error",
         errors: [error.response?.data?.detail || error.message]
@@ -99,13 +177,10 @@ function App() {
     setChatMessages(prev => [...prev, { role: 'user', content: msg }]);
     setChatInput("");
     setIsChatting(true);
-    
     try {
-      const res = await axios.post(`${API_BASE}/workflow/chat/${jobId}`, {
-        message: msg
-      });
+      const res = await axios.post(`${API_BASE}/workflow/chat/${jobId}`, { message: msg });
       setChatMessages(prev => [...prev, { role: 'ai', content: res.data.reply }]);
-    } catch (error) {
+    } catch {
       setChatMessages(prev => [...prev, { role: 'ai', content: "**Error**: Unable to reach resolution agent." }]);
     } finally {
       setIsChatting(false);
@@ -113,101 +188,225 @@ function App() {
   };
 
   useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, chatActive, isChatting]);
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Main Menu' },
+    { id: 'active_incidents', label: 'Incident Resolution', icon: AlertCircle, group: 'Main Menu' },
+    { id: 'history', label: 'Investigations', icon: History, group: 'Main Menu' },
+    { id: 'agent_fleet', label: 'Agent Fleet', icon: Cpu, group: 'System' },
+    { id: 'tools', label: 'Enterprise Tools', icon: Wrench, group: 'System' },
+    { id: 'settings', label: 'Settings', icon: Settings, group: 'System' },
+  ];
+
+  const breadcrumb = {
+    dashboard: 'Platform Dashboard',
+    active_incidents: 'Incident Resolution Center',
+    history: 'Investigation History',
+    agent_fleet: 'Agent Fleet Status',
+    tools: 'Enterprise Tools Registry',
+    settings: 'Configuration & Settings',
+  };
 
   return (
     <div className="layout">
-      {/* Sidebar Navigation */}
+      {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-icon">
-            <Layers size={24} color="#6366f1" />
+          <div className="brand-icon"><Layers size={24} color="#6366f1" /></div>
+          <div>
+            <span className="brand-text">AgentSync</span>
+            <div className="brand-version">v1.0 Enterprise</div>
           </div>
-          <span className="brand-text">AgentSync</span>
         </div>
-        
+
         <nav className="sidebar-nav">
-          <div className="nav-group">Main Menu</div>
-          <a href="#" className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => setCurrentView('dashboard')}><LayoutDashboard size={20} /> Dashboard</a>
-          <a href="#" className={`nav-item ${currentView === 'active_incidents' ? 'active' : ''}`} onClick={() => setCurrentView('active_incidents')}><AlertCircle size={20} /> Active Incidents</a>
-          <a href="#" className={`nav-item ${currentView === 'history' ? 'active' : ''}`} onClick={() => setCurrentView('history')}><History size={20} /> Investigations</a>
-          
-          <div className="nav-group" style={{marginTop: '2rem'}}>System</div>
-          <a href="#" className={`nav-item ${currentView === 'agent_fleet' ? 'active' : ''}`} onClick={() => setCurrentView('agent_fleet')}><Cpu size={20} /> Agent Fleet</a>
-          <a href="#" className="nav-item"><Settings size={20} /> Settings</a>
+          {['Main Menu', 'System'].map(group => (
+            <div key={group}>
+              <div className="nav-group">{group}</div>
+              {navItems.filter(i => i.group === group).map(({ id, label, icon: Icon }) => (
+                <a
+                  key={id}
+                  href="#"
+                  className={`nav-item ${currentView === id ? 'active' : ''}`}
+                  onClick={(e) => { e.preventDefault(); setCurrentView(id); }}
+                >
+                  <Icon size={18} />
+                  {label}
+                  {id === 'active_incidents' && result && (
+                    <span className="nav-badge">{result.status?.includes('Error') ? '!' : '✓'}</span>
+                  )}
+                </a>
+              ))}
+              {group === 'Main Menu' && <div style={{ height: 16 }} />}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-footer">
           <div className="system-status">
-            <div className="status-dot healthy"></div>
-            <span>System Healthy</span>
+            <div className={`status-dot ${apiHealth?.status === 'healthy' ? 'healthy' : 'degraded'}`}></div>
+            <span>{apiHealth?.status === 'healthy' ? 'All Systems Operational' : 'Checking Status...'}</span>
           </div>
+          {metrics && (
+            <div className="footer-uptime">⏱ Uptime: {metrics.platform.uptime}</div>
+          )}
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main className="main-content">
-        {/* Top Header */}
+        {/* Topbar */}
         <header className="topbar">
           <div className="breadcrumbs">
-            <span>AgentSync</span> <ChevronRight size={14} /> <span className="current">
-              {currentView === 'dashboard' && "Platform Dashboard"}
-              {currentView === 'active_incidents' && "Incident Resolution Center"}
-              {currentView === 'history' && "Investigation History"}
-              {currentView === 'agent_fleet' && "Agent Fleet Status"}
-            </span>
+            <span>AgentSync</span>
+            <ChevronRight size={14} />
+            <span className="current">{breadcrumb[currentView]}</span>
           </div>
           <div className="topbar-actions">
             <div className="search-box">
-              <Search size={16} />
+              <Search size={15} />
               <input type="text" placeholder="Search resources..." />
             </div>
-            <button className="icon-btn"><Bell size={20} /></button>
-            <div className="user-profile">
-              <User size={20} />
-            </div>
+            <button className="icon-btn" title="Notifications"><Bell size={18} /></button>
+            <div className="user-profile" title="Admin User"><User size={16} /></div>
           </div>
         </header>
 
-        {/* Dashboard Body */}
         <div className="dashboard-body">
-          
-          {/* Dashboard View */}
+
+          {/* ── Dashboard View ──────────────────────────────────────────────── */}
           {currentView === 'dashboard' && (
-             <div className="view-container">
-               <h1 className="page-title">Platform Overview</h1>
-               <p className="page-subtitle">Real-time telemetry and Agent metrics</p>
-               
-               <div className="metrics-grid" style={{ marginTop: '24px' }}>
-                 <div className="metric-box">
-                    <Database size={24} className="metric-icon" color="#58a6ff" />
-                    <div>
-                      <div className="metric-val">4</div>
-                      <div className="metric-label">Active Agents</div>
+            <div className="view-container">
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Platform Overview</h1>
+                  <p className="page-subtitle">Real-time telemetry, agent metrics & system health</p>
+                </div>
+                <button className="btn-ghost" onClick={fetchMetrics} disabled={metricsLoading}>
+                  <RefreshCw size={15} className={metricsLoading ? 'spinner' : ''} />
+                  Refresh
+                </button>
+              </div>
+
+              {metricsLoading && !metrics ? (
+                <div className="loading-state card">
+                  <Activity className="spinner" size={36} color="#6366f1" />
+                  <p>Loading platform metrics...</p>
+                </div>
+              ) : metrics ? (
+                <>
+                  {/* Health Banner */}
+                  <div className={`health-banner ${apiHealth?.status === 'healthy' ? 'healthy' : 'degraded'}`}>
+                    <CheckCircle size={18} />
+                    <span><strong>System Status:</strong> {apiHealth?.status === 'healthy' ? 'All Systems Operational' : 'Degraded'}</span>
+                    <span className="health-ts">Last checked: {new Date().toLocaleTimeString()}</span>
+                  </div>
+
+                  {/* Primary Metrics */}
+                  <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 20 }}>
+                    <StatCard icon={Cpu} value={metrics.agents.online} label="Active Agents" color="#6366f1" />
+                    <StatCard icon={CheckCircle2} value={metrics.workflows.total_all_time} label="Total Investigations" color="#3fb950" />
+                    <StatCard icon={Activity} value={metrics.workflows.workflows_last_24h} label="Last 24h" color="#58a6ff" />
+                    <StatCard icon={Wrench} value={metrics.tools.total} label="Registered Tools" color="#a371f7" />
+                  </div>
+
+                  {/* Session Metrics */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20 }}>
+                    <div className="card">
+                      <div className="card-header">
+                        <h3><BarChart3 size={16} /> Session Performance</h3>
+                      </div>
+                      <div className="card-body">
+                        <div className="info-list">
+                          <div className="info-row">
+                            <span>Session Workflows</span>
+                            <strong>{metrics.workflows.session_total}</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Active Now</span>
+                            <strong style={{ color: '#3fb950' }}>{metrics.workflows.session_active}</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Completed</span>
+                            <strong>{metrics.workflows.session_completed}</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Errors</span>
+                            <strong style={{ color: metrics.workflows.session_errors > 0 ? '#f85149' : '#3fb950' }}>
+                              {metrics.workflows.session_errors}
+                            </strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Avg. Duration</span>
+                            <strong>{metrics.workflows.avg_duration_seconds}s</strong>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                 </div>
-                 <div className="metric-box">
-                    <CheckCircle2 size={24} className="metric-icon" color="#3fb950" />
-                    <div>
-                      <div className="metric-val">128</div>
-                      <div className="metric-label">Incidents Resolved</div>
+
+                    <div className="card">
+                      <div className="card-header">
+                        <h3><Server size={16} /> Platform Configuration</h3>
+                      </div>
+                      <div className="card-body">
+                        <div className="info-list">
+                          <div className="info-row">
+                            <span>Platform</span>
+                            <strong>{metrics.platform.name} {metrics.platform.version}</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>LLM Provider</span>
+                            <strong>Groq (Cloud)</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Model</span>
+                            <strong>{metrics.agents.model}</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Uptime</span>
+                            <strong style={{ color: '#3fb950' }}>{metrics.platform.uptime}</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Orchestrator</span>
+                            <strong>LangGraph</strong>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                 </div>
-                 <div className="metric-box">
-                    <Network size={24} className="metric-icon" color="#a371f7" />
-                    <div>
-                      <div className="metric-val">99.9%</div>
-                      <div className="metric-label">System Uptime</div>
+                  </div>
+
+                  {/* Component Health Grid */}
+                  <div className="card" style={{ marginTop: 20 }}>
+                    <div className="card-header">
+                      <h3><Network size={16} /> Component Health</h3>
                     </div>
-                 </div>
-               </div>
-             </div>
+                    <div className="card-body">
+                      <div className="component-grid">
+                        {Object.entries(apiHealth?.components || {}).map(([name, status]) => (
+                          <div key={name} className={`component-chip ${status === 'ok' || status === 'online' ? 'ok' : 'err'}`}>
+                            {status === 'ok' || status === 'online'
+                              ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                            {name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <Info size={40} />
+                  <p>Could not connect to the API. Make sure the backend is running on port 8000.</p>
+                </div>
+              )}
+            </div>
           )}
 
-          {/* Active Incidents View */}
+          {/* ── Active Incidents View ────────────────────────────────────────── */}
           {currentView === 'active_incidents' && (
             <div className="view-container">
               <div className="page-header">
@@ -217,63 +416,98 @@ function App() {
                 </div>
                 {result && (
                   <div className={`status-badge ${result.status?.includes('Error') ? 'error' : 'success'}`}>
-                    {result.status?.includes('Error') ? <ShieldAlert size={16} /> : <CheckCircle2 size={16} />}
+                    {result.status?.includes('Error') ? <ShieldAlert size={15} /> : <CheckCircle2 size={15} />}
                     {result.status}
                   </div>
                 )}
               </div>
 
               <div className="grid-layout">
-                {/* Left Column: Input and Results */}
+                {/* Left Column */}
                 <div className="left-column">
                   <div className="card input-card">
                     <div className="card-header">
-                      <h3><FileTerminal size={18} /> Initialize Investigation</h3>
+                      <h3><FileTerminal size={16} /> Initialize Investigation</h3>
                     </div>
                     <div className="card-body">
                       <textarea
                         className="enterprise-textarea"
                         rows={3}
-                        placeholder="Describe the incident (e.g. Payment API is returning 500 errors...)"
+                        placeholder="Describe the incident (e.g. Payment API is returning 500 errors with high latency...)"
                         value={requestText}
                         onChange={(e) => setRequestText(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && runWorkflow()}
                       />
                       <div className="action-row">
+                        <span className="hint-text">Ctrl+Enter to run</span>
                         <button className="btn-primary" onClick={runWorkflow} disabled={loading || !requestText.trim()}>
-                          {loading ? <Activity className="spinner" size={18} /> : <Play size={18} />}
+                          {loading ? <Activity className="spinner" size={16} /> : <Play size={16} />}
                           {loading ? "Agents Orchestrating..." : "Run Analysis"}
                         </button>
                       </div>
                     </div>
                   </div>
 
+                  {/* Pipeline Steps (shown while loading) */}
                   {loading && !result && (
-                    <div className="loading-state card">
-                      <Activity className="spinner" size={40} color="#6366f1" />
-                      <h3>Coordinating Agent Fleet</h3>
-                      <p>Executing planning, investigation, and analysis phases.</p>
+                    <div className="pipeline-card card">
+                      <div className="card-header"><h3><GitMerge size={16} /> Agent Pipeline — Live</h3></div>
+                      <div className="card-body">
+                        <div className="pipeline-steps">
+                          {[
+                            { name: 'Planner Agent', desc: 'Generating execution plan...', icon: BookOpen },
+                            { name: 'Investigation Agent', desc: 'Querying tools & gathering evidence...', icon: Search },
+                            { name: 'Analysis Agent', desc: 'Performing root cause analysis...', icon: TrendingUp },
+                            { name: 'Decision Agent', desc: 'Formulating resolution strategy...', icon: Zap },
+                          ].map(({ name, desc, icon: Icon }, i) => (
+                            <div key={i} className="pipeline-step">
+                              <div className="step-icon"><Icon size={16} /></div>
+                              <div>
+                                <div className="step-name">{name}</div>
+                                <div className="step-desc">{desc}</div>
+                              </div>
+                              <Activity className="spinner step-spinner" size={14} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
 
                   {result && (
                     <div className="results-container">
+                      {/* Error display */}
+                      {result.errors?.length > 0 && (
+                        <div className="error-banner">
+                          <ShieldAlert size={16} />
+                          <div>{result.errors.map((e, i) => <p key={i}>{e}</p>)}</div>
+                        </div>
+                      )}
+
+                      {/* Execution Metrics */}
                       <div className="metrics-grid">
                         <div className="metric-box">
-                          <Clock size={20} className="metric-icon" />
+                          <div className="metric-icon-wrap" style={{ background: 'rgba(88,166,255,0.1)', border: '1px solid rgba(88,166,255,0.2)' }}>
+                            <Clock size={18} color="#58a6ff" />
+                          </div>
                           <div>
                             <div className="metric-val">{result.execution_metrics?.duration_seconds || 0}s</div>
                             <div className="metric-label">Execution Time</div>
                           </div>
                         </div>
                         <div className="metric-box">
-                          <Server size={20} className="metric-icon" />
+                          <div className="metric-icon-wrap" style={{ background: 'rgba(163,113,247,0.1)', border: '1px solid rgba(163,113,247,0.2)' }}>
+                            <Server size={18} color="#a371f7" />
+                          </div>
                           <div>
                             <div className="metric-val">{result.execution_metrics?.llm_calls || 0}</div>
                             <div className="metric-label">LLM Calls</div>
                           </div>
                         </div>
                         <div className="metric-box">
-                          <TerminalSquare size={20} className="metric-icon" />
+                          <div className="metric-icon-wrap" style={{ background: 'rgba(63,185,80,0.1)', border: '1px solid rgba(63,185,80,0.2)' }}>
+                            <TerminalSquare size={18} color="#3fb950" />
+                          </div>
                           <div>
                             <div className="metric-val">{result.execution_metrics?.tool_calls || 0}</div>
                             <div className="metric-label">Tool Invocations</div>
@@ -281,33 +515,53 @@ function App() {
                         </div>
                       </div>
 
+                      {/* Tabs */}
                       <div className="card tabs-card">
                         <div className="tabs-header">
-                          <button className={`tab-btn ${activeTab === 'plan' ? 'active' : ''}`} onClick={() => setActiveTab('plan')}>Execution Plan</button>
-                          <button className={`tab-btn ${activeTab === 'investigation' ? 'active' : ''}`} onClick={() => setActiveTab('investigation')}>Investigation</button>
-                          <button className={`tab-btn ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>Analysis</button>
-                          <button className={`tab-btn ${activeTab === 'decision' ? 'active' : ''}`} onClick={() => setActiveTab('decision')}>Recommendation</button>
+                          {[
+                            { id: 'plan', label: 'Execution Plan', icon: BookOpen },
+                            { id: 'investigation', label: 'Investigation', icon: Search },
+                            { id: 'analysis', label: 'Analysis', icon: TrendingUp },
+                            { id: 'decision', label: 'Recommendation', icon: Zap },
+                          ].map(({ id, label, icon: Icon }) => (
+                            <button
+                              key={id}
+                              className={`tab-btn ${activeTab === id ? 'active' : ''}`}
+                              onClick={() => setActiveTab(id)}
+                            >
+                              <Icon size={13} />
+                              {label}
+                            </button>
+                          ))}
                         </div>
                         <div className="tab-content markdown-body">
-                          {activeTab === 'plan' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.plan || "No data."}</ReactMarkdown>}
-                          {activeTab === 'investigation' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.investigation_results || "No data."}</ReactMarkdown>}
-                          {activeTab === 'analysis' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.analysis || "No data."}</ReactMarkdown>}
-                          {activeTab === 'decision' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.decision || "No data."}</ReactMarkdown>}
+                          {activeTab === 'plan' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.plan || "*No plan data.*"}</ReactMarkdown>}
+                          {activeTab === 'investigation' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.investigation_results || "*No investigation data.*"}</ReactMarkdown>}
+                          {activeTab === 'analysis' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.analysis || "*No analysis data.*"}</ReactMarkdown>}
+                          {activeTab === 'decision' && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.decision || "*No recommendation data.*"}</ReactMarkdown>}
                         </div>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Right Column: Follow-up Chat */}
+                {/* Right Column — Chat */}
                 <div className="right-column">
+                  {!result && !loading && (
+                    <div className="resolution-prompt card">
+                      <div className="prompt-icon"><AlertCircle size={40} color="#6366f1" /></div>
+                      <h3>Incident Resolution Center</h3>
+                      <p>Submit an incident description to begin multi-agent analysis. The platform will orchestrate Planner, Investigation, Analysis, and Decision agents automatically.</p>
+                    </div>
+                  )}
+
                   {result && !chatActive && (
                     <div className="resolution-prompt card">
                       <div className="prompt-icon"><MessageSquare size={32} /></div>
                       <h3>Follow-up & Resolution</h3>
-                      <p>Would you like to execute the recommendation or investigate further?</p>
+                      <p>The agents have produced their recommendation. Open the copilot to ask follow-up questions or execute the resolution steps.</p>
                       <button className="btn-secondary" onClick={() => setChatActive(true)}>
-                        Open Resolution Chat <ChevronRight size={16} />
+                        Open Resolution Copilot <ChevronRight size={15} />
                       </button>
                     </div>
                   )}
@@ -315,13 +569,16 @@ function App() {
                   {chatActive && (
                     <div className="chat-interface card">
                       <div className="chat-header">
-                        <h4>Resolution Copilot</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Layers size={16} color="#58a6ff" />
+                          <h4>Resolution Copilot</h4>
+                        </div>
                         <span className="badge">Active</span>
                       </div>
                       <div className="chat-messages">
                         {chatMessages.map((msg, idx) => (
                           <div key={idx} className={`message-bubble ${msg.role}`}>
-                            {msg.role === 'ai' && <div className="avatar"><Layers size={14} /></div>}
+                            {msg.role === 'ai' && <div className="avatar"><Layers size={13} /></div>}
                             <div className="msg-content">
                               <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                             </div>
@@ -329,7 +586,7 @@ function App() {
                         ))}
                         {isChatting && (
                           <div className="message-bubble ai">
-                            <div className="avatar"><Layers size={14} /></div>
+                            <div className="avatar"><Layers size={13} /></div>
                             <div className="msg-content">
                               <span className="typing-dots">Agent is thinking...</span>
                             </div>
@@ -338,16 +595,16 @@ function App() {
                         <div ref={chatEndRef} />
                       </div>
                       <div className="chat-input-area">
-                        <input 
-                          type="text" 
-                          placeholder="Instruct the agents to fix the issue..." 
+                        <input
+                          type="text"
+                          placeholder="Ask a follow-up question..."
                           value={chatInput}
                           onChange={(e) => setChatInput(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
                           disabled={isChatting}
                         />
                         <button className="send-btn" onClick={handleSendChat} disabled={!chatInput.trim() || isChatting}>
-                          <Send size={18} />
+                          <Send size={16} />
                         </button>
                       </div>
                     </div>
@@ -357,35 +614,45 @@ function App() {
             </div>
           )}
 
-          {/* History View */}
+          {/* ── History View ─────────────────────────────────────────────────── */}
           {currentView === 'history' && (
             <div className="view-container">
-              <h1 className="page-title">Investigations Log</h1>
-              <p className="page-subtitle">History of previous incident workflows stored in database</p>
-              
-              <div className="card" style={{ marginTop: '24px' }}>
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Investigations Log</h1>
+                  <p className="page-subtitle">Long-term memory: {historyTotal} total investigations stored in database</p>
+                </div>
+                <button className="btn-ghost" onClick={fetchHistory} disabled={historyLoading}>
+                  <RefreshCw size={15} className={historyLoading ? 'spinner' : ''} />
+                  Refresh
+                </button>
+              </div>
+
+              <div className="card" style={{ marginTop: 20 }}>
                 <div className="table-responsive">
                   <table className="enterprise-table">
                     <thead>
                       <tr>
-                        <th>ID</th>
-                        <th>User Request</th>
+                        <th>#</th>
+                        <th>Incident Request</th>
                         <th>Timestamp</th>
-                        <th>Final Decision</th>
+                        <th>Final Decision (Preview)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {historyLoading ? (
-                        <tr><td colSpan="4" style={{ textAlign: 'center', padding: '24px' }}><Activity className="spinner" size={24} color="#6366f1" /></td></tr>
+                        <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>
+                          <Activity className="spinner" size={24} color="#6366f1" />
+                        </td></tr>
                       ) : history.length === 0 ? (
-                        <tr><td colSpan="4" style={{ textAlign: 'center', padding: '24px' }}>No investigations found in database.</td></tr>
+                        <tr><td colSpan="4" className="empty-row">No investigations found in database.</td></tr>
                       ) : (
                         history.map((record) => (
                           <tr key={record.id}>
-                            <td>#{record.id}</td>
+                            <td><span className="id-badge">#{record.id}</span></td>
                             <td className="truncate-cell"><strong>{record.user_request}</strong></td>
-                            <td>{new Date(record.timestamp + 'Z').toLocaleString()}</td>
-                            <td className="truncate-cell">{record.decision}</td>
+                            <td><span className="ts-text">{new Date(record.timestamp + 'Z').toLocaleString()}</span></td>
+                            <td className="truncate-cell" style={{ color: 'var(--text-muted)', fontSize: 13 }}>{record.decision}</td>
                           </tr>
                         ))
                       )}
@@ -396,25 +663,253 @@ function App() {
             </div>
           )}
 
-          {/* Agent Fleet View */}
+          {/* ── Agent Fleet View ─────────────────────────────────────────────── */}
           {currentView === 'agent_fleet' && (
             <div className="view-container">
-              <h1 className="page-title">Agent Fleet Operations</h1>
-              <p className="page-subtitle">Current status of autonomous agents across the network</p>
-              
-              <div className="agents-grid" style={{ marginTop: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                {agents.map((agent) => (
-                  <div key={agent.id} className="card agent-card">
-                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <h3><Cpu size={18} /> {agent.name}</h3>
-                      <span className="status-badge success"><span className="status-dot healthy" style={{marginRight: '6px'}}></span> {agent.status}</span>
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Agent Fleet Operations</h1>
+                  <p className="page-subtitle">Autonomous AI agents coordinating across the enterprise platform</p>
+                </div>
+                <button className="btn-ghost" onClick={fetchAgents} disabled={agentsLoading}>
+                  <RefreshCw size={15} className={agentsLoading ? 'spinner' : ''} />
+                  Refresh
+                </button>
+              </div>
+
+              {agentsLoading ? (
+                <div className="loading-state card" style={{ marginTop: 20 }}>
+                  <Activity className="spinner" size={36} color="#6366f1" />
+                  <p>Loading agent fleet...</p>
+                </div>
+              ) : (
+                <div className="agents-grid" style={{ marginTop: 20 }}>
+                  {agents.map((agent) => (
+                    <div key={agent.id} className="card agent-card">
+                      <div className="agent-card-header">
+                        <div className="agent-icon-wrap">
+                          <Cpu size={20} color="#6366f1" />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div className="agent-name">{agent.name}</div>
+                          <div className="agent-role">{agent.role}</div>
+                        </div>
+                        <span className="status-badge success">
+                          <span className="status-dot healthy" style={{ marginRight: 5 }}></span>
+                          {agent.status}
+                        </span>
+                      </div>
+                      <div className="card-body">
+                        <p className="agent-desc">{agent.description}</p>
+                        <div className="agent-model">
+                          <Server size={12} /> {agent.model}
+                        </div>
+                        {agent.capabilities && (
+                          <div className="capabilities-wrap">
+                            {agent.capabilities.map(cap => (
+                              <span key={cap} className="capability-chip">{cap}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="card-body">
-                      <p style={{ color: 'var(--text-muted)', fontSize: '14px', lineHeight: '1.5' }}>{agent.description}</p>
+                  ))}
+                  {agents.length === 0 && (
+                    <div className="empty-state" style={{ gridColumn: '1/-1' }}>
+                      <Info size={36} />
+                      <p>Could not load agents. Ensure the backend API is running.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Tools View ───────────────────────────────────────────────────── */}
+          {currentView === 'tools' && (
+            <div className="view-container">
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Enterprise Tools Registry</h1>
+                  <p className="page-subtitle">All tools available to the Investigation Agent for action execution</p>
+                </div>
+                <button className="btn-ghost" onClick={fetchTools} disabled={toolsLoading}>
+                  <RefreshCw size={15} className={toolsLoading ? 'spinner' : ''} />
+                  Refresh
+                </button>
+              </div>
+
+              {toolsLoading ? (
+                <div className="loading-state card" style={{ marginTop: 20 }}>
+                  <Activity className="spinner" size={36} color="#6366f1" />
+                  <p>Loading tools registry...</p>
+                </div>
+              ) : (
+                <div className="tools-grid" style={{ marginTop: 20 }}>
+                  {tools.map((tool) => (
+                    <div key={tool.id} className="card tool-card">
+                      <div className="tool-card-header">
+                        <div className="tool-icon-wrap">
+                          {tool.category === 'Observability' && <BarChart3 size={18} color="#58a6ff" />}
+                          {tool.category === 'Knowledge' && <BookOpen size={18} color="#a371f7" />}
+                          {tool.category === 'Action' && <Zap size={18} color="#3fb950" />}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div className="tool-name">{tool.name}</div>
+                        </div>
+                        <ToolCategoryBadge category={tool.category} />
+                      </div>
+                      <div className="card-body" style={{ paddingTop: 12 }}>
+                        <p className="tool-desc">{tool.description}</p>
+                        <div className="tool-meta">
+                          <div className="tool-meta-row">
+                            <Database size={12} />
+                            <span>{tool.data_source}</span>
+                          </div>
+                          <div className="tool-meta-row">
+                            <Package size={12} />
+                            <span>Parameters: <code>{tool.parameters.join(', ')}</code></span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {tools.length === 0 && (
+                    <div className="empty-state" style={{ gridColumn: '1/-1' }}>
+                      <Info size={36} />
+                      <p>Could not load tools. Ensure the backend API is running.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Settings View ────────────────────────────────────────────────── */}
+          {currentView === 'settings' && (
+            <div className="view-container">
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Configuration & Settings</h1>
+                  <p className="page-subtitle">Platform configuration, integrations, and environment information</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20 }}>
+                <div className="card">
+                  <div className="card-header"><h3><Server size={16} /> LLM & API Configuration</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row">
+                        <span>LLM Provider</span>
+                        <span className="info-value">Groq Cloud</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Default Model</span>
+                        <span className="info-value">llama3-8b-8192</span>
+                      </div>
+                      <div className="info-row">
+                        <span>API Key</span>
+                        <span className="info-value">gsk_••••••••••••••••</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Orchestration Framework</span>
+                        <span className="info-value">LangGraph</span>
+                      </div>
+                      <div className="info-row">
+                        <span>LangChain Version</span>
+                        <span className="info-value">1.x</span>
+                      </div>
                     </div>
                   </div>
-                ))}
-                {agents.length === 0 && <p>Loading agents from backend API...</p>}
+                </div>
+
+                <div className="card">
+                  <div className="card-header"><h3><Database size={16} /> Memory & Storage</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row">
+                        <span>Short-term Memory</span>
+                        <span className="info-value">In-memory (session)</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Long-term Memory</span>
+                        <span className="info-value">SQLite (agentsync_memory.db)</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Enterprise Mock DB</span>
+                        <span className="info-value">SQLite (enterprise_mock.db)</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Memory Strategy</span>
+                        <span className="info-value">Keyword-based retrieval</span>
+                      </div>
+                      <div className="info-row">
+                        <span>History Retention</span>
+                        <span className="info-value">Unlimited (SQLite)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-header"><h3><GitMerge size={16} /> Workflow Configuration</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row"><span>Entry Node</span><span className="info-value">Planner Agent</span></div>
+                      <div className="info-row"><span>Risk Routing</span><span className="info-value">Enabled (High/Medium/Low)</span></div>
+                      <div className="info-row"><span>High Risk Behavior</span><span className="info-value">Direct → Decision</span></div>
+                      <div className="info-row"><span>Medium Risk Behavior</span><span className="info-value">Re-investigate → Decision</span></div>
+                      <div className="info-row"><span>Ticket Auto-creation</span><span className="info-value">Enabled (unmonitored services)</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-header"><h3><Globe size={16} /> API & Deployment</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row"><span>API Framework</span><span className="info-value">FastAPI 0.141</span></div>
+                      <div className="info-row"><span>API Server</span><span className="info-value">Uvicorn (ASGI)</span></div>
+                      <div className="info-row"><span>API Base URL</span><span className="info-value">http://localhost:8000</span></div>
+                      <div className="info-row"><span>Frontend Framework</span><span className="info-value">React 19 + Vite</span></div>
+                      <div className="info-row">
+                        <span>API Docs</span>
+                        <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer" className="info-link">
+                          /docs <ArrowUpRight size={11} />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Workflow Architecture Diagram */}
+              <div className="card" style={{ marginTop: 20 }}>
+                <div className="card-header"><h3><GitMerge size={16} /> Multi-Agent Workflow Architecture</h3></div>
+                <div className="card-body">
+                  <div className="workflow-diagram">
+                    {[
+                      { label: 'User Request', color: '#58a6ff', icon: User },
+                      { label: 'Planner Agent', color: '#6366f1', icon: BookOpen },
+                      { label: 'Investigation Agent', color: '#a371f7', icon: Search },
+                      { label: 'Analysis Agent', color: '#e3b341', icon: TrendingUp },
+                      { label: 'Risk Evaluator', color: '#f0883e', icon: AlertTriangle },
+                      { label: 'Decision Agent', color: '#3fb950', icon: Zap },
+                    ].map(({ label, color, icon: Icon }, i, arr) => (
+                      <div key={i} className="diagram-step-wrap">
+                        <div className="diagram-step" style={{ borderColor: color }}>
+                          <Icon size={16} color={color} />
+                          <span style={{ color }}>{label}</span>
+                        </div>
+                        {i < arr.length - 1 && <ChevronRight size={18} color="var(--text-muted)" />}
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 12, textAlign: 'center' }}>
+                    LangGraph StateGraph with conditional routing — Medium Risk triggers additional investigation pass.
+                  </p>
+                </div>
               </div>
             </div>
           )}
