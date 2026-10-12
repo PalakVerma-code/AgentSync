@@ -402,13 +402,15 @@ async def health_check():
     except Exception:
         db_ok = False
 
+    llm_ok = bool(settings.GROQ_API_KEY)
+
     return {
-        "status": "healthy" if db_ok else "degraded",
+        "status": "healthy" if (db_ok and llm_ok) else "degraded",
         "timestamp": datetime.utcnow().isoformat(),
         "components": {
             "api": "ok",
             "database": "ok" if db_ok else "error",
-            "llm_provider": "groq",
+            "llm_provider": "ok" if llm_ok else "not_configured",
             "agents": "online"
         }
     }

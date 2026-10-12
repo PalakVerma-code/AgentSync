@@ -386,13 +386,15 @@ function App() {
                     </div>
                     <div className="card-body">
                       <div className="component-grid">
-                        {Object.entries(apiHealth?.components || {}).map(([name, status]) => (
-                          <div key={name} className={`component-chip ${status === 'ok' || status === 'online' ? 'ok' : 'err'}`}>
-                            {status === 'ok' || status === 'online'
-                              ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                            {name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                          </div>
-                        ))}
+                        {Object.entries(apiHealth?.components || {}).map(([name, status]) => {
+                          const isHealthy = status === 'ok' || status === 'online' || status === 'connected' || status === 'groq';
+                          return (
+                            <div key={name} className={`component-chip ${isHealthy ? 'ok' : 'err'}`}>
+                              {isHealthy ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                              {name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
