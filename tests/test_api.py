@@ -135,3 +135,33 @@ def test_chat_without_prior_job():
     # but must not crash (500). If the LLM is unreachable, it returns error text in 'reply'.
     assert resp.status_code == 200
     assert "reply" in resp.json()
+
+
+# ─── /tickets ─────────────────────────────────────────────────────────────────
+
+def test_list_tickets():
+    resp = client.get("/tickets")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "total" in data
+    assert "tickets" in data
+    assert isinstance(data["tickets"], list)
+    assert data["total"] >= 1
+    # Check ticket structure
+    first = data["tickets"][0]
+    assert "ticket_id" in first
+    assert "title" in first
+    assert "status" in first
+
+
+def test_get_ticket_detail():
+    resp = client.get("/tickets")
+    first_id = resp.json()["tickets"][0]["ticket_id"]
+    detail_resp = client.get(f"/tickets/{first_id}")
+    assert detail_resp.status_code == 200
+    assert detail_resp.json()["ticket_id"] == first_id
+
+
+def test_get_ticket_detail_not_found():
+    resp = client.get("/tickets/INC-NONEXISTENT-9999")
+    assert resp.status_code == 404

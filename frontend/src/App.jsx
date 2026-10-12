@@ -82,7 +82,24 @@ function App() {
   const [tools, setTools] = useState([]);
   const [toolsLoading, setToolsLoading] = useState(false);
 
+  // Tickets State
+  const [tickets, setTickets] = useState([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+
   // ─── Data Fetchers ──────────────────────────────────────────────────────────
+
+  const fetchTickets = useCallback(async () => {
+    setTicketsLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/tickets`);
+      setTickets(res.data.tickets || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTicketsLoading(false);
+    }
+  }, []);
 
   const fetchAgents = useCallback(async () => {
     setAgentsLoading(true);
@@ -140,9 +157,10 @@ function App() {
   useEffect(() => {
     if (currentView === "agent_fleet") fetchAgents();
     if (currentView === "history") fetchHistory();
+    if (currentView === "tickets") fetchTickets();
     if (currentView === "dashboard") fetchMetrics();
     if (currentView === "tools") fetchTools();
-  }, [currentView, fetchAgents, fetchHistory, fetchMetrics, fetchTools]);
+  }, [currentView, fetchAgents, fetchHistory, fetchTickets, fetchMetrics, fetchTools]);
 
   // ─── Workflow ───────────────────────────────────────────────────────────────
 
@@ -196,6 +214,7 @@ function App() {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Main Menu' },
     { id: 'active_incidents', label: 'Incident Resolution', icon: AlertCircle, group: 'Main Menu' },
+    { id: 'tickets', label: 'Incident Tickets', icon: Ticket, group: 'Main Menu' },
     { id: 'history', label: 'Investigations', icon: History, group: 'Main Menu' },
     { id: 'agent_fleet', label: 'Agent Fleet', icon: Cpu, group: 'System' },
     { id: 'tools', label: 'Enterprise Tools', icon: Wrench, group: 'System' },
@@ -205,6 +224,7 @@ function App() {
   const breadcrumb = {
     dashboard: 'Platform Dashboard',
     active_incidents: 'Incident Resolution Center',
+    tickets: 'Enterprise Incident Tickets',
     history: 'Investigation History',
     agent_fleet: 'Agent Fleet Status',
     tools: 'Enterprise Tools Registry',
@@ -662,6 +682,153 @@ function App() {
                   </table>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── Tickets View ─────────────────────────────────────────────────── */}
+          {currentView === 'tickets' && (
+            <div className="view-container">
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Incident Tickets</h1>
+                  <p className="page-subtitle">Generated ITSM & Escalation Tickets: {tickets.length} total tickets tracked</p>
+                </div>
+                <button className="btn-ghost" onClick={fetchTickets} disabled={ticketsLoading}>
+                  <RefreshCw size={15} className={ticketsLoading ? 'spinner' : ''} />
+                  Refresh
+                </button>
+              </div>
+
+              <div className="card" style={{ marginTop: 20 }}>
+                <div className="table-responsive">
+                  <table className="enterprise-table">
+                    <thead>
+                      <tr>
+                        <th>Ticket ID</th>
+                        <th>Title / Incident</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Severity</th>
+                        <th>Timestamp</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ticketsLoading ? (
+                        <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>
+                          <Activity className="spinner" size={24} color="#6366f1" />
+                        </td></tr>
+                      ) : tickets.length === 0 ? (
+                        <tr><td colSpan="7" className="empty-row">No incident tickets found.</td></tr>
+                      ) : (
+                        tickets.map((t) => (
+                          <tr key={t.ticket_id} style={{ cursor: 'pointer' }} onClick={() => setSelectedTicket(t)}>
+                            <td>
+                              <span className="id-badge" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <Ticket size={12} />
+                                {t.ticket_id}
+                              </span>
+                            </td>
+                            <td className="truncate-cell" style={{ maxWidth: 300 }}>
+                              <strong>{t.title}</strong>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.type}</span>
+                            </td>
+                            <td>
+                              <span style={{
+                                padding: '3px 8px',
+                                borderRadius: 4,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                background: t.status === 'Escalated' ? 'rgba(248,81,73,0.15)' : t.status === 'Resolved' ? 'rgba(63,185,80,0.15)' : 'rgba(210,153,34,0.15)',
+                                color: t.status === 'Escalated' ? '#f85149' : t.status === 'Resolved' ? '#3fb950' : '#d29922',
+                                border: `1px solid ${t.status === 'Escalated' ? 'rgba(248,81,73,0.3)' : t.status === 'Resolved' ? 'rgba(63,185,80,0.3)' : 'rgba(210,153,34,0.3)'}`
+                              }}>
+                                {t.status}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{
+                                fontSize: 11,
+                                fontWeight: 600,
+                                color: t.severity === 'High' ? '#f85149' : '#58a6ff'
+                              }}>
+                                {t.severity}
+                              </span>
+                            </td>
+                            <td><span className="ts-text">{t.timestamp}</span></td>
+                            <td>
+                              <button
+                                className="btn-ghost"
+                                style={{ padding: '3px 8px', fontSize: 12 }}
+                                onClick={(e) => { e.stopPropagation(); setSelectedTicket(t); }}
+                              >
+                                <Eye size={13} /> View Ticket
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Ticket Details Modal */}
+              {selectedTicket && (
+                <div style={{
+                  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 9999, padding: 20
+                }} onClick={() => setSelectedTicket(null)}>
+                  <div className="card" style={{
+                    maxWidth: 750, width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+                    boxShadow: '0 16px 48px rgba(0,0,0,0.6)', border: '1px solid #30363d'
+                  }} onClick={(e) => e.stopPropagation()}>
+                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Ticket size={20} color="#818cf8" />
+                        <h3 style={{ margin: 0 }}>Ticket Details — {selectedTicket.ticket_id}</h3>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                          background: selectedTicket.status === 'Escalated' ? 'rgba(248,81,73,0.15)' : 'rgba(63,185,80,0.15)',
+                          color: selectedTicket.status === 'Escalated' ? '#f85149' : '#3fb950'
+                        }}>
+                          {selectedTicket.status}
+                        </span>
+                      </div>
+                      <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setSelectedTicket(null)}>✕</button>
+                    </div>
+                    <div className="card-body" style={{ overflowY: 'auto', padding: 24 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+                        <div className="info-row" style={{ flexDirection: 'column', alignItems: 'flex-start', background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Type</span>
+                          <strong>{selectedTicket.type}</strong>
+                        </div>
+                        <div className="info-row" style={{ flexDirection: 'column', alignItems: 'flex-start', background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Source</span>
+                          <strong>{selectedTicket.source}</strong>
+                        </div>
+                        <div className="info-row" style={{ flexDirection: 'column', alignItems: 'flex-start', background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Created / Logged</span>
+                          <strong>{selectedTicket.timestamp}</strong>
+                        </div>
+                      </div>
+
+                      <h4 style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Ticket Content & Agent Recommendations</h4>
+                      <div style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, padding: 16 }}>
+                        <div className="markdown-body">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {selectedTicket.content || '*No content.*'}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
