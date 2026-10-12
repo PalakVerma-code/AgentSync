@@ -1,99 +1,198 @@
-# AgentSync: Comprehensive Project Scope & Architecture
+# AgentSync: Comprehensive Technical Scope & Architecture Specification
 
-## 1. Project Objective & Vision
-**Project Name:** AgentSync
+## 1. Executive Summary & Objective
+**Platform Name:** AgentSync  
+**Domain:** Autonomous AI Multi-Agent Coordination & Incident Decision Support Engine  
 
-**Primary Objective:** To develop an AI Agent Coordination & Decision Engine that enables multiple specialized AI agents to collaborate intelligently across complex enterprise workflows. 
+Modern digital enterprises rely heavily on complex distributed microservices, third-party APIs, and persistent databases. When system anomalies, latency spikes, or service outages emerge, diagnosing and mitigating them requires cross-functional coordination: reviewing diagnostic logs, querying metrics databases, cross-referencing previous post-mortems, evaluating downstream risks, and issuing remediation plans.
 
-Modern enterprises require workflows where multiple specialized agents share information, utilize external tools, and make coordinated decisions. AgentSync serves as an orchestration platform to automate these multi-step business processes, specifically tailored (in this implementation) to **Automated IT Incident Resolution**.
+**AgentSync** implements an autonomous, multi-agent orchestration architecture designed to streamline the end-to-end incident resolution lifecycle. Rather than relying on a single monolithic prompt, the platform decomposes incident handling into discrete, specialized agent nodes coordinated through a deterministic state graph powered by LangGraph, integrated with enterprise tools and dual-tier memory systems.
 
-## 2. Core Modules & Milestones (Implemented)
-The project is structured around specific modules designed to build a robust foundation before layering on complex orchestration.
+---
 
-- **Module 1: Agent Environment Setup & Foundation:** Established the Python/LangChain environment and built foundational agents capable of distinct reasoning.
-- **Module 2: Tool Integration & Intelligent Action:** Developed custom enterprise tools and integrated them using ReAct (Reasoning and Acting) paradigms so agents can dynamically gather evidence.
-- **Module 3: Agent Coordination & Memory Systems:** Wired the agents together using a LangGraph state graph. Implemented short-term context passing and a long-term SQLite database (`agentsync_memory.db`) to enable context-aware decision making.
+## 2. Implemented Architecture & Milestones
 
-*(Milestones 4 and 5 involving full enterprise API deployments and broader workflow automation are the next steps.)*
+The project was constructed and verified across four progressive development milestones:
 
-## 3. System Architecture & Workflow
+- **Milestone 1 — Foundations & Core Agent Nodes:** Engineered specialized agents (Planner, Investigation, Analysis, Decision) using LangChain and ChatGroq, establishing isolated cognitive responsibilities.
+- **Milestone 2 — Tool Registry & ReAct Integration:** Integrated six enterprise diagnostic tools into a dynamic ReAct paradigm, enabling autonomous evidence gathering and action execution.
+- **Milestone 3 — State-Graph Orchestration & Memory:** Constructed the LangGraph state machine with conditional risk evaluation routing, and integrated SQLite long-term episodic memory (`agentsync_memory.db`) to enable past precedent recall.
+- **Milestone 4 — Full-Stack API, Dashboard & Deployment:** Built the FastAPI REST interface, React 19 + Vite operations console, incident ticket management center, and deployed the production stack on Render and Vercel.
 
-The architecture is driven by **LangGraph**, which passes a shared `AgentState` object between specialized nodes (agents). 
+---
 
-### 3.1 The AgentState
-The state acts as the short-term memory during a single execution run. It tracks:
-- `user_request`: The original incident description.
-- `plan`: The step-by-step strategy.
-- `investigation_results`: The evidence gathered from tools.
-- `analysis`: The root cause and risk assessment.
-- `decision`: The final mitigation strategy.
-- `workflow_status`: The current state of the pipeline (e.g., "Started", "High Risk - Human Review Required").
-- `errors`: Any execution exceptions.
+## 3. Workflow State Machine & Agent Topology
 
-### 3.2 The Multi-Agent Pipeline
-The workflow (`workflow/agent_workflow.py`) coordinates four primary agents sequentially:
+The engine is orchestrated using **LangGraph**, which passes a strictly typed `AgentState` dictionary between nodes.
 
-1. **Planner Agent:**
-   - **Role:** Analyzes the raw `user_request` and generates a structured, step-by-step investigation plan. It does *not* execute tools; it only plans.
+```
+                    ┌─────────────────────────┐
+                    │      Incoming Event     │
+                    │   (User / System Alert) │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │      Planner Agent      │
+                    │ (Step-by-step checklist)│
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │   Investigation Agent   │
+                    │ (ReAct Multi-Tool Calls)│
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │     Analysis Agent      │
+                    │ (Root-cause diagnosis)  │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+         ┌──────────┤     Risk Evaluation     ├──────────┐
+         │          │   (Conditional Router)  │          │
+         │          └─────────────────────────┘          │
+         ▼                                               ▼
+[High / Standard Path]                          [Medium Path - Re-investigate]
+         │                                               │
+         ▼                                               │
+┌─────────────────────────┐                              │
+│     Decision Agent      │◄─────────────────────────────┘
+│ (Mitigation & Ticket)   │
+└────────────┬────────────┘
+             │
+             ├──────────────────────────┐
+             ▼                          ▼
+  ┌─────────────────────┐    ┌─────────────────────┐
+  │  Long-Term Memory   │    │   Incident Ticket   │
+  │ (Episodic Database) │    │  (Escalation / DB)  │
+  └─────────────────────┘    └─────────────────────┘
+```
 
-2. **Investigation Agent (Research):**
-   - **Role:** Takes the `plan` and acts on it. It operates as a ReAct agent, meaning it autonomously decides *which* tools to call, *when* to call them, and parses their outputs.
-   - **Output:** A comprehensive summary of gathered evidence (`investigation_results`).
+### 3.1 State Definition (`workflow/state.py`)
+The shared `AgentState` object tracks all operational context across the execution lifecycle:
+- `user_request` *(str)*: Initial incident notification or query.
+- `plan` *(str)*: Structured investigation plan generated by the Planner Agent.
+- `investigation_results` *(str)*: Diagnostic evidence synthesized across tool executions.
+- `analysis` *(str)*: Root cause evaluation and business impact analysis.
+- `decision` *(str)*: Comprehensive mitigation plan, action items, and ticket details.
+- `workflow_status` *(str)*: Current pipeline stage (`Started`, `Low Risk`, `High Risk`, `Completed`, `Error`).
+- `errors` *(List[str])*: Execution anomalies or caught exceptions.
+- `execution_metadata` *(Dict)*: Timing metrics, LLM call counts, and tool invocation counters.
 
-3. **Analysis Agent:**
-   - **Role:** Reviews the `investigation_results` against the original request. It identifies the root cause, evaluates the business impact, and determines the risk level (e.g., High, Medium, Low).
+### 3.2 Agent Roles and Prompt Engineering
 
-4. **Risk Evaluation (Conditional Edge):**
-   - **Role:** A deterministic Python function that evaluates the text produced by the Analysis Agent. 
-   - **Routing Logic:** If the risk is "High Risk", the workflow halts and routes for human review. If "Medium Risk", it loops back to the Investigation Agent. If "Low/Normal", it proceeds to the Decision Agent.
+1. **Planner Agent (`agents/planner_agent.py`)**:
+   - Synthesizes the raw problem statement into an ordered investigation strategy.
+   - Restricts operations purely to planning, preventing hallucinated premature diagnosis.
 
-5. **Decision Agent:**
-   - **Role:** Formulates the final resolution strategy.
-   - **Long-Term Memory Integration:** Before generating a decision, this agent queries `agentsync_memory.db` for past workflows involving similar keywords. It uses past decisions as context to maintain consistency.
-   - **Unmonitored Service Escalation:** If the system determines the incident involves a service not found in the local enterprise database, the Decision Agent automatically generates an escalated Markdown ticket (`tickets/INC-XXXX.md`) for manual engineering review.
+2. **Investigation Agent (`agents/investigation_agent.py`)**:
+   - Operates as a ReAct (Reasoning + Acting) agent utilizing `create_react_agent`.
+   - Iteratively inspects service health, retrieves log traces, and checks network connectivity.
 
-## 4. Tool Integrations (Enterprise Simulation)
-To interact with the outside world, the Investigation Agent is equipped with 6 custom tools found in the `tools/` directory:
+3. **Analysis Agent (`agents/analysis_agent.py`)**:
+   - Correlates diagnostic findings against the initial report.
+   - Extracts root causes, evaluates business impact, and determines risk categorization.
 
-1. **Log Analyzer Tool:** Parses JSON log files to find application exceptions and tracebacks.
-2. **Service Health Tool:** Queries the mocked enterprise DB to check the real-time status of internal services (e.g., CPU load, memory, status).
-3. **Incident History Tool:** Retrieves past incident records for specific services to find recurring patterns.
-4. **Knowledge Base / Runbook Tool:** Fetches standard operating procedures (SOPs) for known issues.
-5. **Incident Action Tool:** Allows the agent to simulate taking action (e.g., restarting a service or clearing a cache).
-6. **External API Tool:** Makes actual HTTP `GET` requests to external URLs to verify if third-party dependencies are reachable, handling timeouts and HTTP errors gracefully.
+4. **Risk Evaluation Node (`workflow/agent_workflow.py`)**:
+   - Deterministic rule router assessing risk classifications.
+   - High-risk cases are escalated for human review; medium-risk anomalies trigger additional investigation passes; low/standard cases transition directly to decision synthesis.
 
-## 5. Memory Management
+5. **Decision Agent (`agents/decision_agent.py`)**:
+   - Queries long-term episodic memory for past similar incident outcomes to ensure consistency.
+   - Formulates step-by-step mitigation runbooks with assigned owners and timelines.
+   - Automatically generates escalated Markdown incident tickets (`tickets/INC-XXXX.md`) when unmonitored or out-of-scope systems are detected.
 
-- **Short-Term Memory:** Handled natively by LangGraph. As the state flows from node to node, each agent appends its findings, creating a unified conversational context.
-- **Long-Term Memory:** Managed by `memory/memory_manager.py`. Once a workflow completes successfully, the final state (Request, Plan, Analysis, Decision, Metrics) is securely committed to a local SQLite database (`agentsync_memory.db`). This allows future executions to recall how past similar incidents were resolved.
+---
 
-### 5.1 Database Schemas (Data Persistence)
-The system utilizes two distinct SQLite databases to simulate an enterprise environment and maintain agent context.
+## 4. Enterprise Tool Ecosystem
 
-#### 1. `enterprise_mock.db` (Simulated IT Infrastructure)
-This database acts as the external knowledge base and status tracker for the Investigation Agent.
-- **`service_health`**: Tracks real-time metrics (`service` TEXT PRIMARY KEY, `status` TEXT, `latency_ms` REAL, `error_rate` REAL).
-- **`service_logs`**: Stores application event logs (`id` INTEGER PRIMARY KEY, `service` TEXT, `timestamp` TEXT, `level` TEXT, `message` TEXT).
-- **`historical_incidents`**: Logs past outages (`incident_id` TEXT PRIMARY KEY, `service` TEXT, `description` TEXT, `resolution` TEXT).
-- **`service_runbooks`**: Contains standard operating procedures (`id` INTEGER PRIMARY KEY, `service` TEXT, `step_number` INTEGER, `step_description` TEXT).
-- **`sales`**: Basic mock table for regional revenue (`id` INTEGER PRIMARY KEY, `region` TEXT, `revenue` REAL, `quarter` TEXT).
+The Investigation Agent is equipped with six enterprise simulation tools implemented in `tools/`:
 
-#### 2. `agentsync_memory.db` (Long-Term Memory)
-This database persists the conversational context of past agent workflows for the Decision Agent to reference.
-- **`workflow_history`**: Saves the full lifecycle of an incident resolution (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `user_request` TEXT, `plan` TEXT, `research_results` TEXT, `analysis` TEXT, `decision` TEXT, `timestamp` DATETIME).
+| Tool Name | Module | Data Source | Functionality |
+| :--- | :--- | :--- | :--- |
+| **`service_health_tool`** | `service_health_tool.py` | `enterprise_mock.db` | Queries real-time status, latency, and error rate across enterprise services (`Web Frontend`, `Payment API`, `Auth Service`, etc.). |
+| **`log_analyzer_tool`** | `log_analyzer_tool.py` | `enterprise_mock.db` | Scans log records within a specific time range to identify errors, warnings, and stack traces. |
+| **`incident_history_tool`** | `incident_history_tool.py` | `enterprise_mock.db` | Retrieves historical outages to match current symptoms with past resolutions. |
+| **`knowledge_base_tool`** | `knowledge_base_tool.py` | `enterprise_mock.db` | Retrieves Standard Operating Procedures (SOPs) and step-by-step service runbooks. |
+| **`external_api_tool`** | `external_api_tool.py` | Live HTTP / Network | Probes HTTP/HTTPS endpoints for external API reachability, handling status codes and timeout failures. |
+| **`incident_action_tool`** | `incident_action_tool.py` | Simulated ITSM | Programmatically creates, escalates, and resolves incident tickets with unique tracking IDs (`INC-XXXXXXXX`). |
 
+---
 
-## 6. Technology Stack
-- **Core Language:** Python 3.10+
-- **LLM Provider:** Groq API (utilizing `llama3-8b-8192` for high-speed, high-context reasoning).
-- **Orchestration & Agents:** LangChain Core, LangChain Groq, and LangGraph.
-- **User Interface:** React/Vite (Provides a clean, enterprise-style dashboard to submit incidents and view real-time agent metrics).
-- **API Layer:** FastAPI / Uvicorn (Provides REST endpoints to trigger workflows programmatically).
-- **Data Persistence:** SQLite3 (Handles both the simulated enterprise ITSM database and the AgentSync long-term memory).
-- **Testing:** Pytest (Validates agent reasoning, tool execution, and workflow routing).
+## 5. Dual-Layer Memory Architecture
 
-## 7. Next Steps & Expansion
-With Milestones 1 through 3 complete, the project is ready to scale into:
-- Broader deployment via Docker/Cloud (AWS/Azure/GCP).
-- Expanding the API layer to support webhooks from real ITSM tools like Jira or ServiceNow.
-- Implementing more complex, non-linear agent graphs (e.g., parallel investigation teams).
+### 5.1 Short-Term Working Memory
+Maintained natively in memory through the LangGraph runtime. Context accumulates monotonically as state transitions from node to node, ensuring each agent operates on verified upstream evidence.
+
+### 5.2 Long-Term Episodic Memory (`memory/memory_manager.py`)
+Persisted in SQLite (`agentsync_memory.db`). Upon workflow completion, the full lifecycle record (`user_request`, `plan`, `research_results`, `analysis`, `decision`, `timestamp`) is committed.
+- **Precedent Retrieval**: Before decision generation, keyword heuristics and memory indices retrieve past similar incidents to guide resolution strategies.
+
+---
+
+## 6. Persistence & Database Schemas
+
+### 6.1 `enterprise_mock.db` (Simulated Enterprise Infrastructure)
+- **`service_health`**: Tracks service status, latency, and error metrics.
+  - `service` *(TEXT PRIMARY KEY)*, `status` *(TEXT)*, `latency_ms` *(REAL)*, `error_rate` *(REAL)*
+- **`service_logs`**: Application events and diagnostics.
+  - `id` *(INTEGER PK)*, `service` *(TEXT)*, `timestamp` *(TEXT)*, `level` *(TEXT)*, `message` *(TEXT)*
+- **`historical_incidents`**: Archived enterprise incident records.
+  - `incident_id` *(TEXT PK)*, `service` *(TEXT)*, `description` *(TEXT)*, `resolution` *(TEXT)*
+- **`service_runbooks`**: Standard remediation procedures.
+  - `id` *(INTEGER PK)*, `service` *(TEXT)*, `step_number` *(INTEGER)*, `step_description` *(TEXT)*
+- **`sales`**: Reference enterprise database table for tabular state queries.
+  - `id` *(INTEGER PK)*, `region` *(TEXT)*, `revenue` *(REAL)*, `quarter` *(TEXT)*
+
+### 6.2 `agentsync_memory.db` (Orchestration Long-Term Memory)
+- **`workflow_history`**: Persistent record of resolved incidents.
+  - `id` *(INTEGER PK AUTOINCREMENT)*, `user_request` *(TEXT)*, `plan` *(TEXT)*, `research_results` *(TEXT)*, `analysis` *(TEXT)*, `decision` *(TEXT)*, `timestamp` *(DATETIME)*
+
+---
+
+## 7. REST API & Web Dashboard Specification
+
+### 7.1 Backend API Specification (`api/main.py`)
+- `POST /workflow/run`: Triggers the synchronous multi-agent orchestration workflow.
+- `GET /workflow/status/{job_id}`: Retrieves execution state for a session job.
+- `POST /workflow/chat/{job_id}`: Scoped resolution copilot follow-up chat endpoint.
+- `GET /incidents/history`: Retrieves paginated investigation logs from memory.
+- `GET /incidents/history/{record_id}`: Returns full lifecycle details of an archived incident.
+- `GET /tickets`: Aggregates active, escalated, and historical tickets across file storage and databases.
+- `GET /tickets/{ticket_id}`: Detailed inspection of an individual ticket record.
+- `GET /agents`: Returns registered agent metadata, roles, and capability rosters.
+- `GET /tools`: Returns registered tool documentation, data sources, and parameters.
+- `GET /metrics`: Returns platform telemetry, session counters, and uptime metrics.
+- `GET /health`: Comprehensive health check validating API, database connectivity, and LLM configuration.
+
+### 7.2 Frontend Web Console (`frontend/src/App.jsx`)
+- Built with **React 19** and **Vite**, adhering to modern enterprise dashboard ergonomics:
+  - **Platform Dashboard**: Real-time telemetry, session metrics, platform configuration, and component health chips.
+  - **Incident Resolution Center**: Interactive prompt console with sample incident templates, real-time stage progress indicators, tabbed evidence viewer (Plan, Investigation, Analysis, Decision), and an embedded **Resolution Copilot**.
+  - **Incident Tickets**: Filterable enterprise ticket catalog with modal inspection for generated markdown artifacts and resolution summaries.
+  - **Investigations Log**: Historical database browser allowing drill-down into past runs.
+  - **Agent Fleet Console**: Operational status, role descriptions, and capability badges for each agent.
+  - **Enterprise Tools Registry**: Interactive parameter and data source catalog for all integrated tools.
+  - **Configuration & Settings**: Platform parameters, active LLM model indicator, and API documentation shortcuts.
+
+---
+
+## 8. Quality Assurance & Test Coverage
+
+The platform contains an automated test suite executed via `pytest`:
+- **`tests/test_agents.py`**: Unit tests verifying Planner reasoning, risk evaluation thresholds (high/low risk), and state consistency.
+- **`tests/test_tools.py`**: Unit tests validating all 6 enterprise tools, boundary conditions, invalid parameters, and network timeouts.
+- **`tests/test_api.py`**: Integration tests verifying all REST endpoints, validation errors, error handling, and ticket retrieval.
+
+**Current Test Status**: 30/30 tests passing.
+
+---
+
+## 9. Production Deployment Architecture
+
+- **Backend**: Hosted on Render as a persistent web service running Uvicorn.
+- **Frontend**: Hosted on Vercel as a single-page application using client-side routing rewrites (`frontend/vercel.json`).
+- **Dynamic Configuration**: The frontend dynamically binds to the backend via `import.meta.env.VITE_API_URL`, supporting seamless transitions between local development (`http://localhost:8000`) and cloud environments.

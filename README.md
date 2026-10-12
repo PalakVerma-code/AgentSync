@@ -1,65 +1,193 @@
 # AgentSync: AI Agent Coordination & Decision Engine
 
-## Project Overview
+AgentSync is an enterprise-grade AI agent orchestration platform designed to automate complex multi-step business workflows and IT incident resolution. By coordinating specialized autonomous agents across a structured state graph, the engine streamlines triage, evidence gathering, root cause analysis, mitigation planning, and incident ticket lifecycle management.
 
-AgentSync is an AI-powered coordination and decision engine designed to automate complex business workflows and IT incident resolution. By coordinating multiple specialized AI agents, the platform enables intelligent collaboration, information retrieval, analysis, and decision support across functional domains. 
+---
 
-The system leverages Large Language Models (LLMs), orchestration frameworks, memory systems, and external tool integrations to automate multi-step processes and provide context-aware recommendations.
+## Key Capabilities
+
+- **State-Graph Orchestration**: Built on LangGraph, coordinating agents through deterministic transitions and conditional risk-routing paths.
+- **Specialized Agent Fleet**: Discrete agents for Planning, Investigation, Analysis, and Decision support, eliminating single-prompt bottlenecks.
+- **Integrated Tool Execution**: Native ReAct tool calling to inspect service health, parse system logs, search runbooks, check external dependencies, and manage tickets.
+- **Dual-Layer Memory**:
+  - *Short-Term Working Memory*: Graph state passing between pipeline stages.
+  - *Long-Term Episodic Memory*: SQLite persistence (`agentsync_memory.db`) for precedent retrieval and decision consistency.
+- **Automated Escalation & Ticketing**: Automatically generates tracked incident tickets and escalation records for unmonitored systems.
+- **Enterprise Web Dashboard**: Modern React 19 interface providing real-time telemetry, workflow execution, incident history, ticket management, and an interactive resolution copilot.
+
+---
 
 ## System Architecture
 
-The core orchestration is managed by a state graph (`workflow/agent_workflow.py`), which coordinates four specialized agents:
+```
+[ User Incident Request ]
+           │
+           ▼
+    ┌──────────────┐
+    │ Planner Agent│ ── Formulates step-by-step investigation strategy
+    └──────┬───────┘
+           │
+           ▼
+    ┌─────────────────────┐
+    │ Investigation Agent │ ── Executes tools dynamically (Logs, Health, DB, APIs)
+    └──────┬──────────────┘
+           │
+           ▼
+    ┌────────────────┐
+    │ Analysis Agent │ ── Determines root cause, impact, and risk classification
+    └──────┬─────────┘
+           │
+           ▼
+    ┌─────────────────┐
+    │ Risk Evaluation │ ── Routes: High Risk -> Escalation | Low/Med -> Decision
+    └──────┬──────────┘
+           │
+           ▼
+    ┌────────────────┐
+    │ Decision Agent │ ── Synthesizes resolution plan & manages ticket actions
+    └──────┬─────────┘
+           │
+     ┌─────┴───────────────┐
+     ▼                     ▼
+[ Long-Term Memory ]  [ Incident Tickets ]
+```
 
-1. **Planner Agent**: Analyzes incoming requests and formulates a structured, step-by-step execution plan.
-2. **Investigation Agent**: Autonomously selects and executes integrated tools (e.g., Log Analyzer, Service Health, External API checks) to gather necessary context and evidence.
-3. **Analysis Agent**: Evaluates the gathered data to identify root causes, assess impact, and determine risk levels.
-4. **Decision Agent**: Formulates a final resolution strategy and determines whether automated ticketing or human escalation is required. It utilizes a long-term memory database to ensure consistent decision-making based on past workflows.
+### The Agent Fleet
 
-## Core Features
+| Agent | Role | Responsibility |
+| :--- | :--- | :--- |
+| **Planner Agent** | Strategy | Analyzes the initial report and defines a prioritized investigation checklist. |
+| **Investigation Agent** | Research / ReAct | Autonomously calls tools to gather diagnostics, inspect databases, and query knowledge bases. |
+| **Analysis Agent** | Diagnostics | Synthesizes technical evidence into root cause assessments and business risk tiers. |
+| **Decision Agent** | Action / Resolution | Cross-references historical memory to prescribe mitigation plans and generate tickets. |
 
-- **Multi-Agent Coordination**: Agents collaborate in a sequential pipeline, passing context via a shared state object.
-- **Intelligent Tool Integration**: The system natively integrates with simulated enterprise services, databases, and external APIs with built-in error handling.
-- **Shared Knowledge & Memory**: Implements short-term state memory and long-term SQLite-backed memory (`agentsync_memory.db`) for context-aware decision support.
-- **Dynamic Workflow Routing**: Includes conditional logic to route tasks (e.g., routing back for further investigation or escalating unmonitored systems by auto-generating markdown tickets).
+---
+
+## Tool Ecosystem
+
+The Investigation and Decision agents leverage tools configured in `tools/`:
+
+1. **`service_health_tool`**: Inspects real-time service health, latency, CPU, and error metrics from `enterprise_mock.db`.
+2. **`log_analyzer_tool`**: Parses application logs to detect stack traces, timeout patterns, and error spikes.
+3. **`incident_history_tool`**: Retrieves past service outages to cross-reference known failure modes.
+4. **`knowledge_base_tool`**: Queries standard operating procedures (SOPs) and runbooks for remediation steps.
+5. **`external_api_tool`**: Validates upstream and third-party service reachability via HTTP probes.
+6. **`incident_action_tool`**: Programmatically creates, escalates, and resolves tickets in the ITSM system.
+
+---
 
 ## Technology Stack
 
-- **Language**: Python 3.10+
-- **LLM Provider**: Groq API
-- **Orchestration**: LangChain & LangGraph
-- **User Interface**: React/Vite (Dashboard)
-- **Data Persistence**: SQLite
+- **Backend Framework**: Python 3.10+, FastAPI, Uvicorn
+- **Orchestration**: LangGraph, LangChain Core
+- **LLM Provider**: Groq API (`openai/gpt-oss-20b` high-speed reasoning)
+- **Frontend Dashboard**: React 19, Vite, Lucide Icons, ReactMarkdown
+- **Persistence**: SQLite3 (`agentsync_memory.db` for memory, `enterprise_mock.db` for simulated telemetry)
+- **Testing**: Pytest, HTTPX TestClient
 
-## Setup & Execution
+---
 
-### 1. Configure Environment
-Create a `.env` file in the root directory and provide your Groq API key:
+## Project Structure
+
+```
+AgentSync/
+├── agents/                     # Specialized agent definitions
+│   ├── planner_agent.py
+│   ├── investigation_agent.py
+│   ├── analysis_agent.py
+│   └── decision_agent.py
+├── api/                        # FastAPI application endpoints
+│   └── main.py
+├── config/                     # Environment configuration and settings
+│   └── settings.py
+├── frontend/                   # React 19 + Vite web console
+│   ├── src/
+│   │   ├── App.jsx             # Dashboard, workflow runner, tickets, and settings
+│   │   ├── App.css
+│   │   └── main.jsx
+│   ├── package.json
+│   ├── vercel.json             # Vercel SPA routing configuration
+│   └── vite.config.js
+├── memory/                     # Long-term memory management
+│   └── memory_manager.py
+├── tests/                      # Automated test suite (30 unit & integration tests)
+│   ├── test_agents.py
+│   ├── test_api.py
+│   └── test_tools.py
+├── tickets/                    # Auto-generated incident tickets (Markdown artifacts)
+├── tools/                      # Enterprise simulation and diagnosis tools
+│   ├── external_api_tool.py
+│   ├── incident_action_tool.py
+│   ├── incident_history_tool.py
+│   ├── knowledge_base_tool.py
+│   ├── log_analyzer_tool.py
+│   └── service_health_tool.py
+├── utils/                      # Structured logging and telemetry utilities
+│   └── logging_config.py
+├── workflow/                   # LangGraph state machine definition
+│   ├── agent_workflow.py
+│   └── state.py
+├── requirements.txt            # Python dependencies
+├── setup_db.py                 # Database initialization and seeder
+└── Whole_project_scope.md      # Comprehensive technical architecture document
+```
+
+---
+
+## Local Setup & Quick Start
+
+### 1. Prerequisites
+- Python 3.10 or higher
+- Node.js 18+ and npm
+- A Groq API key ([console.groq.com](https://console.groq.com))
+
+### 2. Environment Configuration
+Create a `.env` file in the project root:
 ```env
-GROQ_API_KEY=your_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+DEFAULT_MODEL=openai/gpt-oss-20b
 ```
 
-### 2. Install Dependencies
-Install the required Python packages:
+### 3. Backend Setup
 ```bash
+# Set up virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Launch the API
-Start the FastAPI backend service:
-```bash
-uvicorn api.main:app --reload
-```
+# Seed databases (if not already initialized)
+python setup_db.py
 
-### 4. Launch the Frontend
-In a separate terminal, navigate to the frontend directory and start the React app:
+# Start the FastAPI server
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
+API Documentation will be available at `http://localhost:8000/docs`.
+
+### 4. Frontend Setup
+In a new terminal window:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+The console will be accessible at `http://localhost:5173`.
 
-### 4. Execute Test Suite
-Run the automated test suite to validate agent logic, workflow routing, and tool execution:
+---
+
+## Verification & Testing
+
+Execute the comprehensive test suite covering agents, tools, API contracts, and ticket flows:
 ```bash
-pytest tests/
+pytest tests/ -v
 ```
+All 30 unit and integration tests are verified and passing.
+
+---
+
+## Production Deployment
+
+- **Frontend**: Deployed on **Vercel** (`https://agent-sync.vercel.app`) using SPA rewrites configured in `frontend/vercel.json`.
+- **Backend**: Deployed on **Render** as a persistent web service executing `uvicorn api.main:app --host 0.0.0.0 --port $PORT`.
+- **Environment Link**: Set `VITE_API_URL` in the frontend hosting environment to target the live backend instance URL.
