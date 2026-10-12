@@ -8,7 +8,7 @@ import {
   Settings, History, MessageSquare, Send, ChevronRight, CheckCircle2,
   Cpu, FileTerminal, ShieldAlert, Database, Network, Wrench, Zap,
   TrendingUp, RefreshCw, BookOpen, Globe, GitMerge, BarChart3,
-  Package, CheckCircle, XCircle, Info, ArrowUpRight
+  Package, CheckCircle, XCircle, Info, ArrowUpRight, Ticket, Tag, CheckSquare, Eye
 } from 'lucide-react';
 import './App.css';
 

@@ -8,6 +8,9 @@ from config.settings import settings
 import uuid
 import time
 import sqlite3
+import os
+import glob
+import re
 from datetime import datetime
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
