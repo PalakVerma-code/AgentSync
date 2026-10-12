@@ -808,7 +808,7 @@ function App() {
                       </div>
                       <div className="info-row">
                         <span>Default Model</span>
-                        <span className="info-value">llama3-8b-8192</span>
+                        <span className="info-value">{metrics?.agents?.model || 'openai/gpt-oss-20b'}</span>
                       </div>
                       <div className="info-row">
                         <span>API Key</span>
