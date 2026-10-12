@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 // ─── Reusable Components ──────────────────────────────────────────────────────
 
@@ -873,11 +873,11 @@ function App() {
                     <div className="info-list">
                       <div className="info-row"><span>API Framework</span><span className="info-value">FastAPI 0.141</span></div>
                       <div className="info-row"><span>API Server</span><span className="info-value">Uvicorn (ASGI)</span></div>
-                      <div className="info-row"><span>API Base URL</span><span className="info-value">http://localhost:8000</span></div>
+                      <div className="info-row"><span>API Base URL</span><span className="info-value">{API_BASE}</span></div>
                       <div className="info-row"><span>Frontend Framework</span><span className="info-value">React 19 + Vite</span></div>
                       <div className="info-row">
                         <span>API Docs</span>
-                        <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer" className="info-link">
+                        <a href={`${API_BASE}/docs`} target="_blank" rel="noreferrer" className="info-link">
                           /docs <ArrowUpRight size={11} />
                         </a>
                       </div>
