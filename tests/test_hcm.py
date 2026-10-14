@@ -142,3 +142,20 @@ def test_agents_and_tools_registration():
     tools = resp_tools.json()["tools"]
     tool_ids = [t["id"] for t in tools]
     assert "query_resource_matrix" in tool_ids
+
+def test_scout_talent():
+    mgr = HCMManager()
+    res = mgr.scout_talent("Kubernetes AWS cloud")
+    assert res["success"] is True
+    assert len(res["candidates"]) > 0
+    # Overloaded engineers like Elena Rostova (>100%) must be in disqualified
+    disq_names = [d["name"] for d in res["disqualified_overloaded"]]
+    assert "Dr. Elena Rostova" in disq_names
+    
+    # Test POST /hcm/scout API endpoint
+    resp = client.post("/hcm/scout", json={"query": "Go Kafka microservices"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert len(data["candidates"]) > 0
+

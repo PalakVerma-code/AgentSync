@@ -10,9 +10,10 @@ AgentSync is an enterprise-grade AI agent orchestration platform that seamlessly
 - **Autonomous Outage Triage**: LangGraph agents continuously ingest diagnostic logs, service health, and runbooks to isolate root causes without manual hunting.
 - **Strict Skill-Aware Matching**: Evaluates incident error signatures against operative capability profiles to match qualified engineers.
 - **Burnout Prevention Engine**: Enforces a strict `< 100%` active workload capacity threshold to disqualify overloaded personnel (e.g. Dr. Elena Rostova @ 115%) from incident paging.
+- **Talent Scout AI & Squad Assembly**: Natural language skill matching and candidate ranking engine with automated headroom and burnout disqualification checks.
 - **Contextual Handoff & Telemetry Bundles**: Pre-packages root cause analyses, stack traces, and mitigation runbooks directly into incident tickets and engineer assignment payloads.
 - **Wellbeing Safeguard & Stress Monitoring**: Features a 5-agent HR review engine (Workload, Project Fit, Performance, Availability, and Wellbeing Check-in) that flags workload spikes for proactive managerial review.
-- **Unified Single-Interface Web Console**: A dark-mode, glassmorphic React 19 interface providing real-time telemetry, interactive project allocation toggles, an HR review drawer, an incident resolution runner, and ticket management.
+- **Unified Single-Interface Web Console**: A dark-mode, industry-grade React 19 interface providing real-time telemetry, Talent Scout AI squad assembly, interactive project allocation toggles, an HR review hub, an incident resolution runner, and ticket management.
 
 ---
 
@@ -105,7 +106,7 @@ The coordination engine deploys 9 discrete agents across two integrated tiers:
 - **Frontend Console**: React 19, Vite, Lucide Icons, ReactMarkdown, CSS Design System
 - **Dual-Stack Integration**: Node.js/Express HCM REST microservice + In-Process Python Fallback
 - **Persistence**: SQLite3 (`agentsync_memory.db` for memory, `enterprise_mock.db` for simulated telemetry)
-- **Testing**: Pytest (37 unit & integration tests)
+- **Testing**: Pytest (38 unit & integration tests)
 
 ---
 
@@ -135,7 +136,7 @@ AgentSync/
 │   └── hr_agents.py            # 5 evidence-based situational review agents
 ├── memory/                     # Long-term memory management
 │   └── memory_manager.py
-├── tests/                      # Automated test suite (37 passing tests)
+├── tests/                      # Automated test suite (38 passing tests)
 │   ├── test_agents.py
 │   ├── test_api.py
 │   ├── test_hcm.py
@@ -209,7 +210,7 @@ Execute the comprehensive test suite covering all agents, tools, API contracts, 
 ```bash
 pytest tests/ -v
 ```
-All **37 unit and integration tests** pass verified.
+All **38 unit and integration tests** pass verified.
 
 ---
 

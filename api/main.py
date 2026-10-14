@@ -97,6 +97,10 @@ class ForgeMissionRequest(BaseModel):
     required_skills: List[str] = []
     required_slots: Optional[int] = 3
 
+class ScoutRequest(BaseModel):
+    query: Optional[str] = ""
+    skills: Optional[List[str]] = []
+
 
 # ─── Workflow Endpoints ───────────────────────────────────────────────────────
 
@@ -583,6 +587,12 @@ async def forge_project_endpoint(req: ForgeMissionRequest):
         required_skills=req.required_skills,
         required_slots=req.required_slots or 3
     )
+
+
+@app.post("/hcm/scout", tags=["HCM"])
+async def scout_talent_endpoint(req: ScoutRequest):
+    """Talent Scout AI: Searches and ranks operatives based on query keywords or skills, enforcing <100% capacity."""
+    return hcm_manager.scout_talent(req.query or "", req.skills)
 
 
 @app.get("/hcm/status", tags=["HCM"])

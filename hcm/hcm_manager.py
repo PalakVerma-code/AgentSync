@@ -432,6 +432,58 @@ class HCMManager:
             "disqualified_overloaded": disqualified
         }
 
+    def scout_talent(self, query: str = "", skills: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Talent Scout AI: Searches and ranks operatives based on natural language query keywords or skills,
+        enforcing the < 100% capacity headroom threshold and providing candidate breakdowns.
+        """
+        tokens = [t.lower() for t in query.replace(",", " ").replace("-", " ").split() if len(t) > 2]
+        if skills:
+            tokens.extend([s.lower().strip() for s in skills if s.strip()])
+        if not tokens:
+            tokens = ["cloud", "backend", "python", "kubernetes", "database"]
+
+        eligible_candidates = []
+        disqualified = []
+
+        for op in self.operatives:
+            cap = op.get("allocatedCapacity", 0)
+            op_skills = [s.lower() for s in op.get("skills", [])]
+            op_text = f"{op['name']} {op['role']} {op['callsign']} {' '.join(op_skills)}".lower()
+
+            if cap >= 100:
+                disqualified.append({
+                    "id": op["id"],
+                    "name": op["name"],
+                    "callsign": op["callsign"],
+                    "role": op["role"],
+                    "avatar": op.get("avatar", ""),
+                    "allocatedCapacity": cap,
+                    "reason": f"Disqualified: {cap}% active capacity exceeds 100% safety threshold (Burnout Prevention)"
+                })
+                continue
+
+            matched = [s for s in op.get("skills", []) if any(t in s.lower() for t in tokens) or s.lower() in tokens]
+            match_count = sum(1 for t in tokens if t in op_text)
+            fit_score = min(99, max(25, round((match_count / max(1, len(tokens))) * 70 + (max(0, 100 - cap) / 100) * 30)))
+
+            eligible_candidates.append({
+                "operative": op,
+                "fit_score": fit_score,
+                "matched_skills": list(set(matched)),
+                "remaining_headroom": max(0, 100 - cap),
+                "status": "AVAILABLE" if cap < 85 else "ELEVATED"
+            })
+
+        eligible_candidates.sort(key=lambda c: (len(c["matched_skills"]) > 0, c["fit_score"]), reverse=True)
+
+        return {
+            "success": True,
+            "query": query,
+            "candidates": eligible_candidates,
+            "disqualified_overloaded": disqualified
+        }
+
     def forge_project(self, title: str, department: str, difficulty: str, budget: str, deadline: str, required_skills: List[str], required_slots: int = 3) -> Dict[str, Any]:
         """Creates a new mission / project in the enterprise matrix."""
         import random

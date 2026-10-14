@@ -23,7 +23,7 @@ The project was constructed and verified across five progressive development mil
 - **Milestone 2 — Tool Registry & ReAct Integration:** Integrated six enterprise diagnostic tools into a dynamic ReAct paradigm, enabling autonomous evidence gathering and action execution.
 - **Milestone 3 — State-Graph Orchestration & Memory:** Constructed the LangGraph state machine with conditional risk evaluation routing, and integrated SQLite long-term episodic memory (`agentsync_memory.db`) to enable past precedent recall.
 - **Milestone 4 — Full-Stack API, Dashboard & Deployment:** Built the FastAPI REST interface, React 19 + Vite operations console, incident ticket management center, and deployed the production stack on Render and Vercel.
-- **Milestone 5 — Dual-Stack HCM & Resource Matrix Integration:** Integrated the `-AI-Agent-Coordination-Decision-Engine` into a single unified web console, implemented 5 evidence-based HR agents, added `query_resource_matrix`, established the `< 100%` capacity headroom lock, and built zero-downtime in-process fallback architecture.
+- **Milestone 5 — Dual-Stack HCM & Resource Matrix Integration:** Integrated the `-AI-Agent-Coordination-Decision-Engine` into a single unified web console, implemented 5 evidence-based HR agents, Talent Scout AI squad assembly with headroom checks, added `query_resource_matrix`, established the `< 100%` capacity headroom lock, and built zero-downtime in-process fallback architecture.
 
 ---
 
@@ -189,15 +189,15 @@ The frontend delivers a **single, unified web console** built with React 19 + Vi
 
 ## 9. Verification & Test Suite Matrix
 
-The platform is continuously verified via an automated test suite comprising **37 tests** across 4 test suites:
+The platform is continuously verified via an automated test suite comprising **38 tests** across 4 test suites:
 
 | Test Suite | File | Tests | Status |
 | :--- | :--- | :---: | :---: |
 | **Agent Reasoning & Workflow** | `tests/test_agents.py` | 4 | ✅ Passed |
 | **API Endpoints & Contracts** | `tests/test_api.py` | 16 | ✅ Passed |
-| **HCM Manager & Headroom Lock** | `tests/test_hcm.py` | 7 | ✅ Passed |
+| **HCM Manager & Headroom Lock** | `tests/test_hcm.py` | 8 | ✅ Passed |
 | **Enterprise Tools Execution** | `tests/test_tools.py` | 10 | ✅ Passed |
-| **Total** | | **37** | **100% Pass** |
+| **Total** | | **38** | **100% Pass** |
 
 ---
 
