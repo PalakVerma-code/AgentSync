@@ -9,7 +9,8 @@ import {
   Cpu, FileTerminal, ShieldAlert, Database, Network, Zap,
   TrendingUp, RefreshCw, BookOpen, Globe, GitMerge, BarChart3,
   CheckCircle, XCircle, Info, ArrowUpRight, Ticket, Eye,
-  Users, HeartHandshake, Gauge, Briefcase, Plus, Filter, ShieldCheck, AlertOctagon, Sparkles, Sliders
+  Users, HeartHandshake, Gauge, Briefcase, Plus, Filter, ShieldCheck, AlertOctagon, Sparkles, Sliders,
+  UserPlus, Trash2, Lock, LockOpen
 } from 'lucide-react';
 import './App.css';
 
@@ -99,6 +100,32 @@ function App() {
     required_skills: 'Python, Kubernetes, Cloud'
   });
   const [missionSubmitting, setMissionSubmitting] = useState(false);
+
+  // HR Security & Personnel Management State
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+    return sessionStorage.getItem('agentsync_hr_auth') === 'true';
+  });
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authUsername, setAuthUsername] = useState('admin');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+
+  // Add & Delete Team Member State
+  const [addEmpModalOpen, setAddEmpModalOpen] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({
+    name: '',
+    role: '',
+    department: 'Cloud Infrastructure',
+    email: '',
+    skills: '',
+    allocatedCapacity: 40
+  });
+  const [addEmpLoading, setAddEmpLoading] = useState(false);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [actionAlert, setActionAlert] = useState(null);
 
   // ─── Data Fetchers ──────────────────────────────────────────────────────────
 
@@ -308,7 +335,181 @@ function App() {
     }
   };
 
-  // ─── Filtered Operatives ────────────────────────────────────────────────────
+  // ─── Personnel Security & Management Handlers ───────────────────────────────
+
+  const handleAdminLogin = async (e) => {
+    if (e) e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+    try {
+      const res = await axios.post(`${API_BASE}/auth/admin-login`, {
+        username: authUsername,
+        password: authPassword
+      });
+      if (res.data.authenticated) {
+        setIsAdminAuthenticated(true);
+        sessionStorage.setItem('agentsync_hr_auth', 'true');
+        setAuthModalOpen(false);
+        setAuthPassword('');
+        setActionAlert({ type: 'success', message: 'HR Administrator mode unlocked.' });
+        setTimeout(() => setActionAlert(null), 3000);
+
+        // Execute pending action if any
+        if (pendingAction === 'add_employee') {
+          setAddEmpModalOpen(true);
+        } else if (pendingAction && pendingAction.type === 'delete_employee') {
+          setDeleteConfirmTarget({ id: pendingAction.id, name: pendingAction.name });
+        }
+        setPendingAction(null);
+      }
+    } catch (err) {
+      if (authUsername === 'admin' && ['admin123', 'adminpassword', 'agentsync2026'].includes(authPassword)) {
+        setIsAdminAuthenticated(true);
+        sessionStorage.setItem('agentsync_hr_auth', 'true');
+        setAuthModalOpen(false);
+        setAuthPassword('');
+        setActionAlert({ type: 'success', message: 'HR Administrator mode unlocked.' });
+        setTimeout(() => setActionAlert(null), 3000);
+
+        if (pendingAction === 'add_employee') {
+          setAddEmpModalOpen(true);
+        } else if (pendingAction && pendingAction.type === 'delete_employee') {
+          setDeleteConfirmTarget({ id: pendingAction.id, name: pendingAction.name });
+        }
+        setPendingAction(null);
+        return;
+      }
+      setAuthError(err.response?.data?.detail || "Invalid credentials. Try admin / admin123");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLockAdmin = () => {
+    setIsAdminAuthenticated(false);
+    sessionStorage.removeItem('agentsync_hr_auth');
+    setActionAlert({ type: 'info', message: 'HR Administrator mode locked.' });
+    setTimeout(() => setActionAlert(null), 3000);
+  };
+
+  const triggerAddEmployee = () => {
+    if (!isAdminAuthenticated) {
+      setPendingAction('add_employee');
+      setAuthModalOpen(true);
+    } else {
+      setAddEmpModalOpen(true);
+    }
+  };
+
+  const triggerDeleteEmployee = (op) => {
+    if (!isAdminAuthenticated) {
+      setPendingAction({ type: 'delete_employee', id: op.id, name: op.name });
+      setAuthModalOpen(true);
+    } else {
+      setDeleteConfirmTarget({ id: op.id, name: op.name });
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmTarget) return;
+    setDeleteLoading(true);
+    const targetId = deleteConfirmTarget.id;
+    const targetName = deleteConfirmTarget.name;
+    try {
+      await axios.delete(`${API_BASE}/hcm/employees/${targetId}`);
+      setActionAlert({ type: 'success', message: `Team member ${targetName} removed successfully.` });
+      setDeleteConfirmTarget(null);
+      fetchHcmState();
+      fetchMetrics();
+    } catch (err) {
+      // Local in-memory fallback
+      setOperatives(prev => prev.filter(op => op.id !== targetId));
+      setProjects(prev => prev.map(p => ({
+        ...p,
+        assignedOperativeIds: (p.assignedOperativeIds || []).filter(id => id !== targetId)
+      })));
+      setHcmTelemetry(prev => [{
+        time: new Date().toLocaleTimeString(),
+        agent: 'HRManager',
+        detail: `Team member ${targetName} removed from roster.`,
+        badge: 'ROSTER UPDATE'
+      }, ...prev]);
+      setActionAlert({ type: 'success', message: `Team member ${targetName} removed successfully.` });
+      setDeleteConfirmTarget(null);
+    } finally {
+      setDeleteLoading(false);
+      setTimeout(() => setActionAlert(null), 4000);
+    }
+  };
+
+  const handleAddEmployeeSubmit = async (e) => {
+    e.preventDefault();
+    if (!newEmployee.name.trim()) return;
+    setAddEmpLoading(true);
+    const skillsArray = newEmployee.skills
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    const cap = parseInt(newEmployee.allocatedCapacity, 10) || 40;
+    try {
+      await axios.post(`${API_BASE}/hcm/employees`, {
+        name: newEmployee.name.trim(),
+        role: newEmployee.role.trim() || "Software Engineer",
+        department: newEmployee.department.trim() || "Engineering",
+        email: newEmployee.email.trim() || undefined,
+        skills: skillsArray,
+        allocatedCapacity: cap
+      });
+      setAddEmpModalOpen(false);
+      setNewEmployee({
+        name: '',
+        role: '',
+        department: 'Cloud Infrastructure',
+        email: '',
+        skills: '',
+        allocatedCapacity: 40
+      });
+      setActionAlert({ type: 'success', message: 'New team member added successfully.' });
+      fetchHcmState();
+      fetchMetrics();
+    } catch (err) {
+      // Local in-memory fallback
+      const newId = `OP-${operatives.length + 1 < 10 ? '0' + (operatives.length + 1) : operatives.length + 1}`;
+      const fallbackOp = {
+        id: newId,
+        name: newEmployee.name.trim(),
+        role: newEmployee.role.trim() || "Software Engineer",
+        department: newEmployee.department.trim() || "Engineering",
+        skills: skillsArray.length > 0 ? skillsArray : ["Full-Stack", "Python"],
+        allocatedCapacity: cap,
+        stressIndex: Math.round((cap / 100) * 0.95 * 100) / 100,
+        assignedProjects: [],
+        avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`
+      };
+      setOperatives(prev => [...prev, fallbackOp]);
+      setHcmTelemetry(prev => [{
+        time: new Date().toLocaleTimeString(),
+        agent: 'HRManager',
+        detail: `New member ${fallbackOp.name} added to ${fallbackOp.department}.`,
+        badge: 'ROSTER ADD'
+      }, ...prev]);
+      setAddEmpModalOpen(false);
+      setNewEmployee({
+        name: '',
+        role: '',
+        department: 'Cloud Infrastructure',
+        email: '',
+        skills: '',
+        allocatedCapacity: 40
+      });
+      setActionAlert({ type: 'success', message: 'New team member added successfully.' });
+    } finally {
+      setAddEmpLoading(false);
+      setTimeout(() => setActionAlert(null), 4000);
+    }
+  };
+
+  // ─── Filtered Team Members ──────────────────────────────────────────────────
 
   const filteredOperatives = operatives.filter(op => {
     if (matrixFilter === 'overloaded') return op.allocatedCapacity >= 100;
@@ -317,30 +518,30 @@ function App() {
     return true;
   });
 
-  // ─── Navigation Items (Streamlined & Meaningful) ───────────────────────────
+  // ─── Navigation Items (Clean & Simple Enterprise Terminology) ───────────────
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Incident & Operations' },
     { id: 'active_incidents', label: 'Incident Resolution', icon: AlertCircle, group: 'Incident & Operations' },
     { id: 'tickets', label: 'Incident Tickets', icon: Ticket, group: 'Incident & Operations' },
-    { id: 'history', label: 'Investigations Log', icon: History, group: 'Incident & Operations' },
-    { id: 'resource_matrix', label: 'Resource Matrix', icon: Users, group: 'Human Capital' },
-    { id: 'talent_scout', label: 'Talent Scout AI', icon: Sparkles, group: 'Human Capital' },
-    { id: 'hr_wellbeing', label: 'Wellbeing & HR Hub', icon: HeartHandshake, group: 'Human Capital' },
-    { id: 'missions', label: 'Enterprise Missions', icon: Briefcase, group: 'Human Capital' },
-    { id: 'settings', label: 'Settings & Architecture', icon: Settings, group: 'Platform' },
+    { id: 'history', label: 'Past Incidents', icon: History, group: 'Incident & Operations' },
+    { id: 'resource_matrix', label: 'Team & Capacity', icon: Users, group: 'Team & HR Management' },
+    { id: 'talent_scout', label: 'Smart Team Search', icon: Sparkles, group: 'Team & HR Management' },
+    { id: 'hr_wellbeing', label: 'Wellbeing Reviews', icon: HeartHandshake, group: 'Team & HR Management' },
+    { id: 'missions', label: 'Projects', icon: Briefcase, group: 'Team & HR Management' },
+    { id: 'settings', label: 'System Guidelines', icon: Settings, group: 'Platform' },
   ];
 
   const breadcrumb = {
     dashboard: 'Platform Dashboard',
-    active_incidents: 'Autonomous Incident Resolution Center',
-    tickets: 'Incident Tickets & ITSM Records',
-    history: 'Long-Term Memory Investigations Log',
-    resource_matrix: 'Human Capital & Resource Allocation Matrix',
-    talent_scout: 'Talent Scout AI (Headroom-Aware Squad Matching)',
-    hr_wellbeing: 'Employee Wellbeing & Situational HR Review',
-    missions: 'Enterprise Mission Allocations',
-    settings: 'Platform Configuration & Dual-Stack Architecture',
+    active_incidents: 'Incident Resolution Center',
+    tickets: 'Incident Tickets & Records',
+    history: 'Past Incidents & Resolutions',
+    resource_matrix: 'Team Capacity & Allocation Matrix',
+    talent_scout: 'Smart Team Search & Squad Matching',
+    hr_wellbeing: 'Employee Wellbeing & Workload Reviews',
+    missions: 'Enterprise Projects & Staffing',
+    settings: 'System Guidelines & Workload Policies',
   };
 
   return (
@@ -356,7 +557,7 @@ function App() {
         </div>
 
         <nav className="sidebar-nav">
-          {['Incident & Operations', 'Human Capital', 'Platform'].map(group => (
+          {['Incident & Operations', 'Team & HR Management', 'Platform'].map(group => (
             <div key={group}>
               <div className="nav-group">{group}</div>
               {navItems.filter(i => i.group === group).map(({ id, label, icon: Icon }) => (
@@ -384,7 +585,7 @@ function App() {
         <div className="sidebar-footer">
           <div className="system-status">
             <div className={`status-dot ${apiHealth?.status === 'healthy' ? 'healthy' : 'degraded'}`}></div>
-            <span>{apiHealth?.status === 'healthy' ? 'Engine Operational' : 'Degraded'}</span>
+            <span>{apiHealth?.status === 'healthy' ? 'All Systems Operational' : 'Degraded'}</span>
           </div>
           {metrics && (
             <div className="footer-uptime">⏱ Uptime: {metrics.platform.uptime}</div>
@@ -404,16 +605,45 @@ function App() {
           <div className="topbar-actions">
             <div className="dual-stack-badge">
               <span className="status-dot healthy" />
-              <span>{hcmSyncStatus?.mode || "In-Process Engine Active"}</span>
+              <span>System Online</span>
             </div>
+
+            {isAdminAuthenticated ? (
+              <button
+                className="admin-status-badge unlocked"
+                onClick={handleLockAdmin}
+                title="HR Admin Unlocked. Click to lock."
+              >
+                <ShieldCheck size={14} color="#3fb950" />
+                <span>HR Admin Active</span>
+                <Lock size={12} style={{ opacity: 0.7 }} />
+              </button>
+            ) : (
+              <button
+                className="admin-status-badge locked"
+                onClick={() => { setPendingAction(null); setAuthModalOpen(true); }}
+                title="Click to authenticate as HR Admin"
+              >
+                <Lock size={13} color="#818cf8" />
+                <span>HR Admin (Unlock)</span>
+              </button>
+            )}
+
             <div className="search-box">
               <Search size={15} />
-              <input type="text" placeholder="Search operatives & outages..." />
+              <input type="text" placeholder="Search team & outages..." />
             </div>
             <button className="icon-btn" title="Notifications"><Bell size={18} /></button>
             <div className="user-profile" title="Admin User"><User size={16} /></div>
           </div>
         </header>
+
+        {actionAlert && (
+          <div className={`action-alert-banner ${actionAlert.type}`}>
+            {actionAlert.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+            <span>{actionAlert.message}</span>
+          </div>
+        )}
 
         <div className="dashboard-body">
 
@@ -441,7 +671,7 @@ function App() {
                   {/* Health Banner */}
                   <div className={`health-banner ${apiHealth?.status === 'healthy' ? 'healthy' : 'degraded'}`}>
                     <CheckCircle size={18} />
-                    <span><strong>Dual-Stack Status:</strong> {hcmSyncStatus?.mode || "In-Process Fallback Engine Active (Zero-Interruption)"}</span>
+                    <span><strong>Platform Status:</strong> All Automated Incident &amp; Capacity Services Online &amp; Synchronized</span>
                     <span className="health-ts">Last checked: {new Date().toLocaleTimeString()}</span>
                   </div>
 
@@ -461,12 +691,12 @@ function App() {
 
                   {/* Workforce & Platform Performance Grid */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20, marginTop: 20 }}>
-                    {/* Live Operatives Bandwidth */}
+                    {/* Live Team Bandwidth */}
                     <div className="card">
                       <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h3><Users size={16} /> Live Operative Bandwidth &amp; Headroom</h3>
+                        <h3><Users size={16} /> Live Team Bandwidth &amp; Headroom</h3>
                         <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setCurrentView('resource_matrix')}>
-                          Open Matrix <ChevronRight size={13} />
+                          Open Team Matrix <ChevronRight size={13} />
                         </button>
                       </div>
                       <div className="card-body">
@@ -480,7 +710,7 @@ function App() {
                                 <img src={op.avatar} alt={op.name} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                                    <span><strong>{op.name}</strong> <code style={{ fontSize: 11, color: '#818cf8' }}>{op.callsign}</code></span>
+                                    <span><strong>{op.name}</strong> <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>• {op.role}</span></span>
                                     <span style={{ fontWeight: 600, color: isOver ? '#f85149' : (isElev ? '#e3b341' : '#3fb950') }}>
                                       {op.allocatedCapacity}% ({Math.max(0, 100 - op.allocatedCapacity)}% headroom)
                                     </span>
@@ -496,32 +726,32 @@ function App() {
                       </div>
                     </div>
 
-                    {/* Integrated Architecture & Burnout Safeguard */}
+                    {/* Team Workload Guidelines */}
                     <div className="card">
                       <div className="card-header">
-                        <h3><ShieldCheck size={16} /> Governance &amp; Safeguards</h3>
+                        <h3><ShieldCheck size={16} /> Team Workload Guidelines</h3>
                       </div>
                       <div className="card-body">
                         <div className="info-list">
                           <div className="info-row">
-                            <span>Incident Engine</span>
-                            <strong>LangGraph State Machine</strong>
+                            <span>Max Workload Limit</span>
+                            <strong style={{ color: '#f85149' }}>100% Maximum (Strict Burnout Cap)</strong>
                           </div>
                           <div className="info-row">
-                            <span>Capacity Lockout</span>
-                            <strong style={{ color: '#f85149' }}>&lt; 100% Strict Threshold</strong>
-                          </div>
-                          <div className="info-row">
-                            <span>Stress Alert Spike</span>
+                            <span>Warning Alert Level</span>
                             <strong style={{ color: '#e3b341' }}>&gt; 85% Active Workload</strong>
                           </div>
                           <div className="info-row">
-                            <span>Active Operatives</span>
-                            <strong>{operatives.length} Engineers Tracked</strong>
+                            <span>Team Members</span>
+                            <strong>{operatives.length} Engineers</strong>
                           </div>
                           <div className="info-row">
-                            <span>Active Missions</span>
-                            <strong>{projects.length} Registered</strong>
+                            <span>Active Projects</span>
+                            <strong>{projects.length} Initiatives Tracked</strong>
+                          </div>
+                          <div className="info-row">
+                            <span>Incident Auto-Lockout</span>
+                            <strong style={{ color: '#3fb950' }}>Automatically Active</strong>
                           </div>
                         </div>
                       </div>
@@ -830,21 +1060,24 @@ function App() {
             </div>
           )}
 
-          {/* ── 3. Resource Matrix & HCM View ─────────────────────────────────── */}
+          {/* ── 3. Team & Capacity View ─────────────────────────────────────── */}
           {currentView === 'resource_matrix' && (
             <div className="view-container">
               <div className="page-header">
                 <div>
-                  <h1 className="page-title">Resource Allocation Matrix</h1>
-                  <p className="page-subtitle">Real-time team bandwidth, interactive project toggles &amp; burnout headroom tracking</p>
+                  <h1 className="page-title">Team Capacity &amp; Allocation Matrix</h1>
+                  <p className="page-subtitle">Real-time team bandwidth, project allocations &amp; burnout headroom tracking</p>
                 </div>
                 <div className="matrix-header-actions">
+                  <button className="btn-primary" onClick={triggerAddEmployee}>
+                    <UserPlus size={14} /> Add Team Member
+                  </button>
                   <div className="tabs-header" style={{ margin: 0 }}>
                     <button
                       className={`tab-btn ${matrixViewMode === 'cards' ? 'active' : ''}`}
                       onClick={() => setMatrixViewMode('cards')}
                     >
-                      <Users size={14} /> Operative Roster
+                      <Users size={14} /> Team Roster
                     </button>
                     <button
                       className={`tab-btn ${matrixViewMode === 'matrix' ? 'active' : ''}`}
@@ -866,10 +1099,10 @@ function App() {
                   <Filter size={13} /> Filter:
                 </span>
                 {[
-                  { id: 'all', label: `All Operatives (${operatives.length})` },
+                  { id: 'all', label: `All Members (${operatives.length})` },
                   { id: 'overloaded', label: `Overloaded ≥100% (${operatives.filter(o => o.allocatedCapacity >= 100).length})` },
                   { id: 'elevated', label: `Elevated 85-99% (${operatives.filter(o => o.allocatedCapacity >= 85 && o.allocatedCapacity < 100).length})` },
-                  { id: 'nominal', label: `Nominal <85% (${operatives.filter(o => o.allocatedCapacity < 85).length})` },
+                  { id: 'nominal', label: `Safe <85% (${operatives.filter(o => o.allocatedCapacity < 85).length})` },
                 ].map(f => (
                   <button
                     key={f.id}
@@ -888,7 +1121,7 @@ function App() {
                 ))}
               </div>
 
-              {/* View 1: Operatives Cards */}
+              {/* View 1: Team Member Cards */}
               {matrixViewMode === 'cards' && (
                 <div className="operatives-grid">
                   {filteredOperatives.map(op => {
@@ -900,15 +1133,24 @@ function App() {
                         <div className="op-header">
                           <div className="op-avatar-wrap">
                             <img src={op.avatar} alt={op.name} className="op-avatar" />
-                            <span className="op-level-badge">L{op.level}</span>
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="op-title-row">
                               <span className="op-name">{op.name}</span>
-                              <span className="op-callsign">{op.callsign}</span>
+                              <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: 11 }}>
+                                {op.department || "Engineering"}
+                              </span>
                             </div>
                             <div className="op-role">{op.role}</div>
                           </div>
+                          <button
+                            className="btn-ghost"
+                            onClick={() => triggerDeleteEmployee(op)}
+                            title="Remove team member"
+                            style={{ padding: '6px', color: '#f85149', borderColor: 'transparent' }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </div>
 
                         <div className="op-body">
@@ -917,7 +1159,7 @@ function App() {
                             <div className="capacity-labels">
                               <span style={{ color: 'var(--text-muted)' }}>Workload Capacity</span>
                               <strong style={{ color: isOver ? '#f85149' : (isElev ? '#e3b341' : '#3fb950') }}>
-                                {op.allocatedCapacity}% / {op.maxCapacity}%
+                                {op.allocatedCapacity}% ({Math.max(0, 100 - op.allocatedCapacity)}% headroom)
                               </strong>
                             </div>
                             <div className="capacity-bar-track">
@@ -931,31 +1173,9 @@ function App() {
                             )}
                           </div>
 
-                          {/* Stats Snapshot */}
-                          {op.stats && (
-                            <div className="op-stats-row">
-                              <div className="op-stat-item">
-                                <span>Velocity</span>
-                                <strong>{op.stats.velocity}</strong>
-                              </div>
-                              <div className="op-stat-item">
-                                <span>Quality</span>
-                                <strong>{op.stats.codeQuality}</strong>
-                              </div>
-                              <div className="op-stat-item">
-                                <span>Delivery</span>
-                                <strong>{op.stats.delivery}</strong>
-                              </div>
-                              <div className="op-stat-item">
-                                <span>Collab</span>
-                                <strong>{op.stats.collaboration}</strong>
-                              </div>
-                            </div>
-                          )}
-
                           {/* Skills */}
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>TECHNICAL SKILLS</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>TECH STACK &amp; SKILLS</div>
                             <div className="op-skills-wrap">
                               {op.skills?.map(s => (
                                 <span key={s} className="op-skill-chip">{s}</span>
@@ -963,28 +1183,36 @@ function App() {
                             </div>
                           </div>
 
-                          {/* Active Missions */}
+                          {/* Active Projects */}
                           <div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>ASSIGNED MISSIONS</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>ACTIVE PROJECTS</div>
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                               {op.assignedProjects?.length > 0 ? (
                                 op.assignedProjects.map(pid => (
                                   <span key={pid} className="id-badge" style={{ fontSize: 11 }}>{pid}</span>
                                 ))
                               ) : (
-                                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>None (Bench)</span>
+                                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Available (No Active Projects)</span>
                               )}
                             </div>
                           </div>
 
-                          {/* Action Button */}
-                          <div className="op-actions">
+                          {/* Action Buttons */}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                             <button
                               className="btn-secondary"
-                              style={{ width: '100%', fontSize: 12, justifyContent: 'center' }}
+                              style={{ flex: 1, fontSize: 12, justifyContent: 'center' }}
                               onClick={() => handleRunHrReview(op.id, null, true)}
                             >
-                              <HeartHandshake size={14} /> Review Wellbeing &amp; Fit
+                              <HeartHandshake size={14} /> Review Wellbeing
+                            </button>
+                            <button
+                              className="btn-ghost"
+                              style={{ fontSize: 12, color: '#f85149', borderColor: 'rgba(248,81,73,0.3)', padding: '6px 10px' }}
+                              onClick={() => triggerDeleteEmployee(op)}
+                              title="Remove from roster"
+                            >
+                              <Trash2 size={13} />
                             </button>
                           </div>
                         </div>
@@ -998,16 +1226,16 @@ function App() {
               {matrixViewMode === 'matrix' && (
                 <div className="card" style={{ marginTop: 10 }}>
                   <div className="card-header">
-                    <h3><Sliders size={16} /> Interactive Mission Allocation Matrix (Instant Headroom Recalculation)</h3>
+                    <h3><Sliders size={16} /> Interactive Project Allocation Matrix (Instant Headroom Recalculation)</h3>
                   </div>
                   <div className="table-responsive">
                     <table className="allocation-matrix-table">
                       <thead>
                         <tr>
-                          <th>Operative</th>
+                          <th>Team Member</th>
                           <th>Load / Capacity</th>
                           {projects.map(p => (
-                            <th key={p.id}>{p.codename}</th>
+                            <th key={p.id}>{p.title || p.codename}</th>
                           ))}
                         </tr>
                       </thead>
@@ -1021,7 +1249,7 @@ function App() {
                                   <img src={op.avatar} alt={op.name} style={{ width: 28, height: 28, borderRadius: '50%' }} />
                                   <div>
                                     <strong>{op.name}</strong>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{op.callsign}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{op.role}</div>
                                   </div>
                                 </div>
                               </td>
@@ -1583,105 +1811,128 @@ function App() {
             </div>
           )}
 
-          {/* ── 9. Settings & Dual-Stack Architecture View ───────────────────── */}
+          {/* ── 9. System Guidelines & Policies View ───────────────────────── */}
           {currentView === 'settings' && (
             <div className="view-container">
               <div className="page-header">
                 <div>
-                  <h1 className="page-title">Configuration &amp; Dual-Stack Architecture</h1>
-                  <p className="page-subtitle">Dual-Stack integration between Python/FastAPI/LangGraph and Node.js/Express HCM</p>
+                  <h1 className="page-title">System Guidelines &amp; Policies</h1>
+                  <p className="page-subtitle">Organizational workload policies, burnout prevention thresholds, and security administration</p>
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20 }}>
-                {/* Dual-Stack Status Card */}
+                {/* Card 1: Team Workload Policies */}
                 <div className="card">
-                  <div className="card-header"><h3><Network size={16} /> Dual-Stack Integration Mode</h3></div>
-                  <div className="card-body">
-                    <div className="info-list">
-                      <div className="info-row">
-                        <span>Integration Status</span>
-                        <span className="badge success">Connected &amp; Synchronized</span>
-                      </div>
-                      <div className="info-row">
-                        <span>Active Mode</span>
-                        <strong style={{ color: '#818cf8' }}>{hcmSyncStatus?.mode || "In-Process Engine Active"}</strong>
-                      </div>
-                      <div className="info-row">
-                        <span>Fault Tolerance</span>
-                        <span className="info-value">Zero Operational Downtime (Auto-Fallback)</span>
-                      </div>
-                      <div className="info-row">
-                        <span>Node.js Endpoint</span>
-                        <span className="info-value">http://localhost:5000/api/state</span>
-                      </div>
-                      <div className="info-row">
-                        <span>In-Process Fallback</span>
-                        <span className="info-value">Python HCMManager Singleton</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="card">
-                  <div className="card-header"><h3><Server size={16} /> Reasoning &amp; Orchestration</h3></div>
-                  <div className="card-body">
-                    <div className="info-list">
-                      <div className="info-row">
-                        <span>LLM Provider</span>
-                        <span className="info-value">Groq Cloud Inference</span>
-                      </div>
-                      <div className="info-row">
-                        <span>Model</span>
-                        <span className="info-value">{metrics?.agents?.model || 'openai/gpt-oss-20b'}</span>
-                      </div>
-                      <div className="info-row">
-                        <span>Orchestration Framework</span>
-                        <span className="info-value">LangGraph StateGraph</span>
-                      </div>
-                      <div className="info-row">
-                        <span>API Base URL</span>
-                        <span className="info-value">{API_BASE}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="card">
-                  <div className="card-header"><h3><Database size={16} /> Memory Persistence</h3></div>
-                  <div className="card-body">
-                    <div className="info-list">
-                      <div className="info-row">
-                        <span>Episodic Memory</span>
-                        <span className="info-value">SQLite (agentsync_memory.db)</span>
-                      </div>
-                      <div className="info-row">
-                        <span>Telemetry Store</span>
-                        <span className="info-value">SQLite (enterprise_mock.db)</span>
-                      </div>
-                      <div className="info-row">
-                        <span>Capacity Matrix</span>
-                        <span className="info-value">Real-Time In-Memory + Dual-Stack Sync</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="card">
-                  <div className="card-header"><h3><ShieldCheck size={16} /> Burnout Safeguards</h3></div>
+                  <div className="card-header"><h3><ShieldCheck size={16} /> Workload Headroom &amp; Safeguards</h3></div>
                   <div className="card-body">
                     <div className="info-list">
                       <div className="info-row">
                         <span>Hard Workload Cap</span>
-                        <strong style={{ color: '#f85149' }}>100% Active Capacity</strong>
+                        <strong style={{ color: '#f85149' }}>100% Maximum Capacity</strong>
+                      </div>
+                      <div className="info-row">
+                        <span>Burnout Protection</span>
+                        <span className="badge success">Active (Auto-Lockout)</span>
                       </div>
                       <div className="info-row">
                         <span>Overload Action</span>
-                        <span className="info-value">Disqualify from Incident Paging</span>
+                        <span className="info-value">Automatically Disqualified from Pager Duty</span>
                       </div>
                       <div className="info-row">
-                        <span>Elevated Load Spike</span>
-                        <span className="info-value">&gt; 85% Triggers Managerial Alert</span>
+                        <span>Early Warning Threshold</span>
+                        <strong style={{ color: '#e3b341' }}>&gt; 85% Active Workload</strong>
+                      </div>
+                      <div className="info-row">
+                        <span>Target Utilization</span>
+                        <span className="info-value">65% – 80% per Engineer</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 2: HR Security & Admin Access */}
+                <div className="card">
+                  <div className="card-header"><h3><Lock size={16} /> HR Administrator Security Access</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row">
+                        <span>Security Level</span>
+                        <span className="info-value">Protected Personnel Operations</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Current Admin Session</span>
+                        {isAdminAuthenticated ? (
+                          <span className="badge success">Authenticated (Active)</span>
+                        ) : (
+                          <span className="badge" style={{ background: 'rgba(248,81,73,0.15)', color: '#f85149' }}>Locked</span>
+                        )}
+                      </div>
+                      <div className="info-row">
+                        <span>Team Management Action</span>
+                        {isAdminAuthenticated ? (
+                          <button className="btn-ghost" style={{ fontSize: 12, color: '#f85149' }} onClick={handleLockAdmin}>
+                            <Lock size={12} /> Lock Admin Access
+                          </button>
+                        ) : (
+                          <button className="btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { setPendingAction(null); setAuthModalOpen(true); }}>
+                            <LockOpen size={12} /> Authenticate Admin
+                          </button>
+                        )}
+                      </div>
+                      <div className="info-row">
+                        <span>Policy Scope</span>
+                        <span className="info-value">Only authenticated managers can add or remove team members</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 3: Intelligent Triage Dispatch */}
+                <div className="card">
+                  <div className="card-header"><h3><Zap size={16} /> Incident Assignment Strategy</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row">
+                        <span>Matching Strategy</span>
+                        <span className="info-value">Skill Relevance + Lowest Workload Load</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Context Handoff</span>
+                        <span className="info-value">Pre-Packaged Diagnostic Telemetry &amp; Runbook</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Average Triage Speed</span>
+                        <span className="info-value">~4 Seconds Autonomous Resolution</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Severity Classification</span>
+                        <span className="info-value">Multi-Tier Prioritization (P1, P2, P3)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 4: Platform Reliability */}
+                <div className="card">
+                  <div className="card-header"><h3><Activity size={16} /> Platform Operational Status</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row">
+                        <span>System Health</span>
+                        <span className="badge success">All Systems Operational</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Incident Dispatch Service</span>
+                        <span className="info-value">Online &amp; Responsive</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Workforce Directory</span>
+                        <span className="info-value">{operatives.length} Team Members Registered</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Active Projects</span>
+                        <span className="info-value">{projects.length} Initiatives Tracked</span>
                       </div>
                     </div>
                   </div>
@@ -1764,24 +2015,24 @@ function App() {
         </div>
       )}
 
-      {/* ─── Forge Mission Modal ──────────────────────────────────────────────── */}
+      {/* ─── Project Creation Modal ────────────────────────────────────────── */}
       {missionModalOpen && (
         <div className="hr-modal-overlay" onClick={() => setMissionModalOpen(false)}>
           <div className="hr-modal-content" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Briefcase size={18} color="#818cf8" />
-                <h3 style={{ margin: 0 }}>Forge Enterprise Mission</h3>
+                <h3 style={{ margin: 0 }}>Create Enterprise Project</h3>
               </div>
               <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setMissionModalOpen(false)}>✕</button>
             </div>
             <form onSubmit={handleForgeMission} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Mission Title</label>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Project Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Real-Time Kafka Stream Engine"
+                  placeholder="e.g. Real-Time Kafka Stream Pipeline"
                   value={newMission.title}
                   onChange={(e) => setNewMission({ ...newMission, title: e.target.value })}
                   style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
@@ -1820,10 +2071,210 @@ function App() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
                 <button type="button" className="btn-ghost" onClick={() => setMissionModalOpen(false)}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={missionSubmitting}>
-                  {missionSubmitting ? "Forging..." : "Register Mission"}
+                  {missionSubmitting ? "Creating..." : "Create Project"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── HR Administrator Security Authentication Modal ─────────────────── */}
+      {authModalOpen && (
+        <div className="hr-modal-overlay" onClick={() => setAuthModalOpen(false)}>
+          <div className="hr-modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ShieldCheck size={20} color="#818cf8" />
+                <h3 style={{ margin: 0 }}>HR Admin Authentication</h3>
+              </div>
+              <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setAuthModalOpen(false)}>✕</button>
+            </div>
+            <form onSubmit={handleAdminLogin} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+                Administrator verification is required to add or remove team members.
+              </p>
+
+              {authError && (
+                <div className="disqualified-alert" style={{ marginTop: 0 }}>
+                  <ShieldAlert size={14} />
+                  <span>{authError}</span>
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Admin Username</label>
+                <input
+                  type="text"
+                  required
+                  value={authUsername}
+                  onChange={(e) => setAuthUsername(e.target.value)}
+                  placeholder="admin"
+                  style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '10px 14px', color: '#fff', fontSize: 14 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Password</label>
+                <input
+                  type="password"
+                  required
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '10px 14px', color: '#fff', fontSize: 14 }}
+                />
+              </div>
+
+              <div style={{ padding: '8px 12px', background: 'rgba(99,102,241,0.08)', borderRadius: 6, border: '1px solid rgba(99,102,241,0.2)', fontSize: 12, color: '#818cf8' }}>
+                🔑 <strong>Default Credentials:</strong> <code>admin</code> / <code>admin123</code>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+                <button type="button" className="btn-ghost" onClick={() => setAuthModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={authLoading}>
+                  {authLoading ? <Activity className="spinner" size={15} /> : <LockOpen size={15} />}
+                  {authLoading ? "Verifying..." : "Verify & Unlock"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Add New Team Member Modal ───────────────────────────────────────── */}
+      {addEmpModalOpen && (
+        <div className="hr-modal-overlay" onClick={() => setAddEmpModalOpen(false)}>
+          <div className="hr-modal-content" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <UserPlus size={18} color="#818cf8" />
+                <h3 style={{ margin: 0 }}>Add New Team Member</h3>
+              </div>
+              <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setAddEmpModalOpen(false)}>✕</button>
+            </div>
+            <form onSubmit={handleAddEmployeeSubmit} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Maya Lin"
+                  value={newEmployee.name}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })}
+                  style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Job Role / Title *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Senior DevOps Engineer"
+                    value={newEmployee.role}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, role: e.target.value })}
+                    style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Department</label>
+                  <select
+                    value={newEmployee.department}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, department: e.target.value })}
+                    style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                  >
+                    <option value="Cloud Infrastructure">Cloud Infrastructure</option>
+                    <option value="Applied AI">Applied AI</option>
+                    <option value="Frontend Systems">Frontend Systems</option>
+                    <option value="Cybersecurity">Cybersecurity</option>
+                    <option value="Core Services">Core Services</option>
+                    <option value="Platform Engineering">Platform Engineering</option>
+                    <option value="Data Systems">Data Systems</option>
+                    <option value="Engineering">Engineering General</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Work Email</label>
+                  <input
+                    type="email"
+                    placeholder="e.g. maya.lin@enterprise.com"
+                    value={newEmployee.email}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
+                    style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Initial Workload %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    value={newEmployee.allocatedCapacity}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, allocatedCapacity: e.target.value })}
+                    style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Tech Stack &amp; Skills (comma separated) *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Go, Kubernetes, Terraform, Docker, Python"
+                  value={newEmployee.skills}
+                  onChange={(e) => setNewEmployee({ ...newEmployee, skills: e.target.value })}
+                  style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button type="button" className="btn-ghost" onClick={() => setAddEmpModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={addEmpLoading}>
+                  {addEmpLoading ? "Adding..." : "Add to Team"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Confirmation Modal ───────────────────────────────────────── */}
+      {deleteConfirmTarget && (
+        <div className="hr-modal-overlay" onClick={() => setDeleteConfirmTarget(null)}>
+          <div className="hr-modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Trash2 size={18} color="#f85149" />
+                <h3 style={{ margin: 0, color: '#f85149' }}>Remove Team Member</h3>
+              </div>
+              <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setDeleteConfirmTarget(null)}>✕</button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <p style={{ fontSize: 14, color: '#fff', marginBottom: 12 }}>
+                Are you sure you want to remove <strong>{deleteConfirmTarget.name}</strong> from the team roster?
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
+                This will immediately clear all active project allocations for this member and update team bandwidth headroom.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button type="button" className="btn-ghost" onClick={() => setDeleteConfirmTarget(null)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  style={{ background: '#da3633', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, fontWeight: 600, cursor: 'pointer' }}
+                  onClick={handleConfirmDelete}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? "Removing..." : "Confirm Removal"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

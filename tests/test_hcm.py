@@ -159,3 +159,38 @@ def test_scout_talent():
     assert data["success"] is True
     assert len(data["candidates"]) > 0
 
+def test_add_and_delete_employee():
+    mgr = HCMManager()
+    initial_count = len(mgr.get_operatives())
+    
+    # Add new employee
+    new_data = {
+        "name": "Sarah Connor",
+        "role": "Site Reliability Engineer",
+        "department": "Platform Reliability",
+        "skills": ["Kubernetes", "Prometheus", "Golang", "AWS"],
+        "allocatedCapacity": 35
+    }
+    res = mgr.add_employee(new_data)
+    assert res["success"] is True
+    assert res["employee"]["name"] == "Sarah Connor"
+    assert res["employee"]["allocatedCapacity"] == 35
+    assert len(mgr.get_operatives()) == initial_count + 1
+    
+    emp_id = res["employee"]["id"]
+    
+    # Test delete
+    del_res = mgr.delete_employee(emp_id)
+    assert del_res["success"] is True
+    assert len(mgr.get_operatives()) == initial_count
+
+def test_admin_login_api():
+    # Valid login
+    resp = client.post("/auth/admin-login", json={"username": "admin", "password": "admin123"})
+    assert resp.status_code == 200
+    assert resp.json()["authenticated"] is True
+    
+    # Invalid login
+    resp_invalid = client.post("/auth/admin-login", json={"username": "admin", "password": "wrongpassword"})
+    assert resp_invalid.status_code == 401
+

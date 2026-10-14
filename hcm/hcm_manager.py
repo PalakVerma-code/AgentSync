@@ -159,10 +159,10 @@ INITIAL_OPERATIVES = [
 INITIAL_PROJECTS = [
     {
         "id": "PRJ-101",
-        "title": "Project Aegis: Orbital Cloud Migration",
-        "codename": "ORBITAL-MIGRATE",
-        "department": "Cloud Core Ops",
-        "difficulty": "Tier V - Legendary",
+        "title": "Cloud Infrastructure Modernization",
+        "codename": "CLOUD-MODERN",
+        "department": "Infrastructure",
+        "difficulty": "High Priority",
         "priority": "CRITICAL",
         "budget": "$420,000",
         "deadline": "2026-12-15",
@@ -173,10 +173,10 @@ INITIAL_PROJECTS = [
     },
     {
         "id": "PRJ-102",
-        "title": "Project Prometheus: Autonomous Multi-Agent RAG",
-        "codename": "PROMETHEUS-SWARM",
-        "department": "Applied AI Directorate",
-        "difficulty": "Tier IV - Mythic",
+        "title": "Autonomous Multi-Agent AI Platform",
+        "codename": "AI-PLATFORM",
+        "department": "Applied AI",
+        "difficulty": "High Priority",
         "priority": "HIGH",
         "budget": "$550,000",
         "deadline": "2027-01-30",
@@ -187,10 +187,10 @@ INITIAL_PROJECTS = [
     },
     {
         "id": "PRJ-103",
-        "title": "Project Chronos: Cyberpunk Executive HUD v4",
-        "codename": "CHRONOS-HUD",
-        "department": "Design Systems & UI",
-        "difficulty": "Tier III - Elite",
+        "title": "Customer Portal & Design System",
+        "codename": "PORTAL-SYSTEM",
+        "department": "Frontend Engineering",
+        "difficulty": "Medium Priority",
         "priority": "MEDIUM",
         "budget": "$180,000",
         "deadline": "2026-11-20",
@@ -201,10 +201,10 @@ INITIAL_PROJECTS = [
     },
     {
         "id": "PRJ-104",
-        "title": "Project Citadel: Quantum Zero-Trust Enclave",
-        "codename": "CITADEL-SHIELD",
-        "department": "Cyber Security Ops",
-        "difficulty": "Tier V - Legendary",
+        "title": "Zero-Trust Identity & Access Security",
+        "codename": "ZERO-TRUST-SEC",
+        "department": "Cybersecurity",
+        "difficulty": "Critical Priority",
         "priority": "CRITICAL",
         "budget": "$620,000",
         "deadline": "2027-03-01",
@@ -521,6 +521,106 @@ class HCMManager:
         prj = next((p for p in self.projects if p["id"] == project_id), None) if project_id else None
         assessment = analyze_employee(op, prj)
         return {"success": True, "assessment": assessment}
+
+    def add_employee(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Adds a new team member to the organization roster."""
+        name = (data.get("name") or "").strip()
+        if not name:
+            return {"success": False, "error": "Employee name is required."}
+
+        # Generate next ID
+        existing_ids = []
+        for o in self.operatives:
+            if o.get("id", "").startswith("OP-"):
+                num_part = o["id"].replace("OP-", "")
+                if num_part.isdigit():
+                    existing_ids.append(int(num_part))
+        next_num = max(existing_ids, default=0) + 1
+        new_id = f"OP-{next_num:02d}"
+
+        # Parse skills
+        skills_raw = data.get("skills", [])
+        if isinstance(skills_raw, str):
+            skills = [s.strip() for s in skills_raw.split(",") if s.strip()]
+        elif isinstance(skills_raw, list):
+            skills = [str(s).strip() for s in skills_raw if str(s).strip()]
+        else:
+            skills = []
+
+        try:
+            capacity = int(data.get("allocatedCapacity", 40) or 40)
+        except (ValueError, TypeError):
+            capacity = 40
+        capacity = max(0, min(150, capacity))
+        stress = min(100, round((capacity / 100) * 45))
+
+        role = (data.get("role") or "Software Engineer").strip()
+        department = (data.get("department") or "Engineering").strip()
+        email = data.get("email") or f"{name.lower().replace(' ', '.')}@enterprise.com"
+        avatar = data.get("avatar") or "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80"
+
+        new_emp = {
+            "id": new_id,
+            "name": name,
+            "callsign": department,
+            "avatar": avatar,
+            "role": role,
+            "department": department,
+            "email": email,
+            "tier": role,
+            "level": 40,
+            "allocatedCapacity": capacity,
+            "maxCapacity": 100,
+            "stressIndex": stress,
+            "stats": {
+                "velocity": 90,
+                "codeQuality": 92,
+                "delivery": 90,
+                "collaboration": 90
+            },
+            "skills": skills,
+            "assignedProjects": data.get("assignedProjects", []) or [],
+            "assignedIncidents": [],
+            "questLog": [f"Assigned to {department} team"]
+        }
+
+        self.operatives.append(new_emp)
+
+        log_entry = {
+            "agent": "HR Management",
+            "action": "New Team Member Added",
+            "detail": f"Registered {name} ({role}) with {len(skills)} skills in {department}.",
+            "time": time.strftime("%H:%M:%S"),
+            "badge": "STAFF_ADDED"
+        }
+        self.telemetry_logs.insert(0, log_entry)
+        return {"success": True, "employee": new_emp}
+
+    def delete_employee(self, emp_id: str) -> Dict[str, Any]:
+        """Deletes an employee from the organization and cleans up project assignments."""
+        op = self.get_operative_by_id(emp_id)
+        if not op:
+            return {"success": False, "error": f"Employee with ID '{emp_id}' not found."}
+
+        op_name = op.get("name", emp_id)
+
+        # Remove from operatives
+        self.operatives = [o for o in self.operatives if o["id"].upper() != emp_id.upper()]
+
+        # Clean up project allocations
+        for prj in self.projects:
+            if emp_id in prj.get("assignedOperativeIds", []):
+                prj["assignedOperativeIds"] = [o for o in prj["assignedOperativeIds"] if o != emp_id]
+
+        log_entry = {
+            "agent": "HR Management",
+            "action": "Team Member Removed",
+            "detail": f"Removed {op_name} ({emp_id}) and updated active project rosters.",
+            "time": time.strftime("%H:%M:%S"),
+            "badge": "STAFF_REMOVED"
+        }
+        self.telemetry_logs.insert(0, log_entry)
+        return {"success": True, "deleted_id": emp_id, "name": op_name}
 
     def sync_with_node_hcm(self) -> Dict[str, Any]:
         """Attempts to sync with Node.js Express HCM service, falling back to in-process state."""

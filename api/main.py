@@ -101,6 +101,20 @@ class ScoutRequest(BaseModel):
     query: Optional[str] = ""
     skills: Optional[List[str]] = []
 
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AddEmployeeRequest(BaseModel):
+    name: str
+    role: str
+    department: Optional[str] = "Engineering"
+    email: Optional[str] = None
+    skills: List[str] = []
+    allocatedCapacity: Optional[int] = 40
+    avatar: Optional[str] = None
+    assignedProjects: Optional[List[str]] = []
+
 
 # ─── Workflow Endpoints ───────────────────────────────────────────────────────
 
@@ -599,6 +613,53 @@ async def scout_talent_endpoint(req: ScoutRequest):
 async def get_hcm_status():
     """Returns dual-stack status with Node.js service / in-process fallback."""
     return hcm_manager.sync_with_node_hcm()
+
+
+# ─── HR Security & Employee Management Endpoints ──────────────────────────────
+
+@app.post("/auth/admin-login", tags=["Auth"])
+async def admin_login(req: AdminLoginRequest):
+    """Authenticate HR Administrator credentials for personnel management."""
+    valid_passwords = ["admin123", "adminpassword", "agentsync2026"]
+    if req.username.strip().lower() == "admin" and req.password in valid_passwords:
+        return {
+            "authenticated": True,
+            "username": "admin",
+            "role": "HR Administrator",
+            "token": "admin-session-auth-token-valid",
+            "message": "Authentication successful. Personnel management unlocked."
+        }
+    raise HTTPException(status_code=401, detail="Invalid username or password. Default administrator credentials: admin / admin123")
+
+
+@app.post("/hcm/employees", tags=["HCM"])
+async def add_employee_endpoint(req: AddEmployeeRequest):
+    """Adds a new team member to the organizational roster."""
+    res = hcm_manager.add_employee(req.model_dump())
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to add team member."))
+    return res
+
+
+@app.delete("/hcm/employees/{employee_id}", tags=["HCM"])
+async def delete_employee_endpoint(employee_id: str):
+    """Removes a team member from the organization roster."""
+    res = hcm_manager.delete_employee(employee_id)
+    if not res.get("success"):
+        raise HTTPException(status_code=404, detail=res.get("error", "Team member not found."))
+    return res
+
+
+@app.post("/hcm/operatives", tags=["HCM"])
+async def add_operative_alias(req: AddEmployeeRequest):
+    """Alias for /hcm/employees."""
+    return await add_employee_endpoint(req)
+
+
+@app.delete("/hcm/operatives/{operative_id}", tags=["HCM"])
+async def delete_operative_alias(operative_id: str):
+    """Alias for /hcm/employees/{id}."""
+    return await delete_employee_endpoint(operative_id)
 
 
 # ─── Metrics & Monitoring Endpoints ───────────────────────────────────────────
