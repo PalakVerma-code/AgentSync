@@ -440,6 +440,28 @@ function App() {
               <span className="status-dot healthy" />
               <span>System Online</span>
             </div>
+
+            {isAdminAuthenticated ? (
+              <button
+                className="admin-status-badge unlocked"
+                onClick={handleLockAdmin}
+                title="HR Admin Unlocked. Click to lock."
+              >
+                <ShieldCheck size={14} color="#3fb950" />
+                <span>HR Admin Active</span>
+                <Lock size={12} style={{ opacity: 0.7 }} />
+              </button>
+            ) : (
+              <button
+                className="admin-status-badge locked"
+                onClick={() => { setPendingAction(null); setAuthModalOpen(true); }}
+                title="Click to authenticate as HR Admin"
+              >
+                <Lock size={13} color="#818cf8" />
+                <span>HR Admin (Unlock)</span>
+              </button>
+            )}
+
             <div className="search-box">
               <Search size={15} color="var(--text-muted)" />
               <input type="text" placeholder="Search issues, team members, projects..." />
@@ -448,6 +470,13 @@ function App() {
             <div className="user-profile" title="Admin User">U</div>
           </div>
         </header>
+
+        {actionAlert && (
+          <div className={`action-alert-banner ${actionAlert.type}`}>
+            {actionAlert.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+            <span>{actionAlert.message}</span>
+          </div>
+        )}
 
         <div className="dashboard-body">
 
@@ -1027,15 +1056,24 @@ function App() {
                         <div className="op-header">
                           <div className="op-avatar-wrap">
                             <img src={op.avatar} alt={op.name} className="op-avatar" />
-                            <span className="op-level-badge">L{op.level}</span>
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="op-title-row">
                               <span className="op-name">{op.name}</span>
-                              <span className="op-callsign">{op.callsign}</span>
+                              <span className="badge" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: 11 }}>
+                                {op.department || "Engineering"}
+                              </span>
                             </div>
                             <div className="op-role">{op.role}</div>
                           </div>
+                          <button
+                            className="btn-ghost"
+                            onClick={() => triggerDeleteEmployee(op)}
+                            title="Remove team member"
+                            style={{ padding: '6px', color: '#f85149', borderColor: 'transparent' }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </div>
 
                         <div className="op-body">
@@ -1104,8 +1142,8 @@ function App() {
                             </div>
                           </div>
 
-                          {/* Action Button */}
-                          <div className="op-actions">
+                          {/* Action Buttons */}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                             <button
                               className="btn-secondary"
                               style={{ width: '100%', fontSize: 12.5, justifyContent: 'center' }}
@@ -1134,7 +1172,7 @@ function App() {
                           <th>Team Member</th>
                           <th>Current Load</th>
                           {projects.map(p => (
-                            <th key={p.id}>{p.codename}</th>
+                            <th key={p.id}>{p.title || p.codename}</th>
                           ))}
                         </tr>
                       </thead>
@@ -1148,7 +1186,7 @@ function App() {
                                   <img src={op.avatar} alt={op.name} style={{ width: 30, height: 30, borderRadius: '50%' }} />
                                   <div>
                                     <strong>{op.name}</strong>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{op.callsign}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{op.role}</div>
                                   </div>
                                 </div>
                               </td>
@@ -1950,6 +1988,41 @@ function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Confirmation Modal ───────────────────────────────────────── */}
+      {deleteConfirmTarget && (
+        <div className="hr-modal-overlay" onClick={() => setDeleteConfirmTarget(null)}>
+          <div className="hr-modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Trash2 size={18} color="#f85149" />
+                <h3 style={{ margin: 0, color: '#f85149' }}>Remove Team Member</h3>
+              </div>
+              <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setDeleteConfirmTarget(null)}>✕</button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <p style={{ fontSize: 14, color: '#fff', marginBottom: 12 }}>
+                Are you sure you want to remove <strong>{deleteConfirmTarget.name}</strong> from the team roster?
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
+                This will immediately clear all active project allocations for this member and update team bandwidth headroom.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button type="button" className="btn-ghost" onClick={() => setDeleteConfirmTarget(null)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  style={{ background: '#da3633', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 6, fontWeight: 600, cursor: 'pointer' }}
+                  onClick={handleConfirmDelete}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? "Removing..." : "Confirm Removal"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
