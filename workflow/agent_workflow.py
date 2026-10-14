@@ -78,7 +78,10 @@ def run_agent_workflow(user_request: str) -> AgentState:
         decision="",
         workflow_status="Started",
         errors=[],
-        execution_metadata={}
+        execution_metadata={},
+        assigned_engineer=None,
+        context_bundle=None,
+        wellbeing_alert=None
     )
     
     app = build_workflow()

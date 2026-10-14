@@ -1,23 +1,29 @@
 # AgentSync: Comprehensive Technical Scope & Architecture Specification
 
 ## 1. Executive Summary & Objective
+
 **Platform Name:** AgentSync  
-**Domain:** Autonomous AI Multi-Agent Coordination & Incident Decision Support Engine  
+**Domain:** Autonomous AI Multi-Agent Coordination, IT Incident Resolution & Human Capital Management (HCM) Decision Engine  
 
-Modern digital enterprises rely heavily on complex distributed microservices, third-party APIs, and persistent databases. When system anomalies, latency spikes, or service outages emerge, diagnosing and mitigating them requires cross-functional coordination: reviewing diagnostic logs, querying metrics databases, cross-referencing previous post-mortems, evaluating downstream risks, and issuing remediation plans.
+Modern digital enterprises rely on complex distributed microservices, persistent databases, and third-party APIs. When system anomalies, latency spikes, or service outages emerge, diagnosing and mitigating them requires cross-functional coordination: reviewing diagnostic logs, querying metrics databases, cross-referencing previous post-mortems, evaluating downstream risks, and issuing remediation plans.
 
-**AgentSync** implements an autonomous, multi-agent orchestration architecture designed to streamline the end-to-end incident resolution lifecycle. Rather than relying on a single monolithic prompt, the platform decomposes incident handling into discrete, specialized agent nodes coordinated through a deterministic state graph powered by LangGraph, integrated with enterprise tools and dual-tier memory systems.
+Simultaneously, traditional incident response suffers from **blind paging**—notifying engineers solely based on static on-call calendars without visibility into active workloads, skill compatibility, or cognitive fatigue. This causes severe alert fatigue, suboptimal MTTR, and engineer burnout.
+
+**AgentSync** resolves this challenge through a **Dual-Stack Integration** that bridges:
+1. **Autonomous Incident Triage (AgentSync)**: A LangGraph state machine orchestrating specialized AI agents (Planner, Investigation, Analysis, Decision) equipped with enterprise tools to parse raw logs and diagnose root causes without human intervention.
+2. **Resource Allocation & Decision Engine (HCM)**: A skill-aware human capital matrix that dynamically tracks operative capacities, enforces strict workload headroom thresholds (`< 100%`), disqualifies overloaded personnel, and bundles contextual telemetry directly into tickets for instant handoff.
 
 ---
 
 ## 2. Implemented Architecture & Milestones
 
-The project was constructed and verified across four progressive development milestones:
+The project was constructed and verified across five progressive development milestones:
 
 - **Milestone 1 — Foundations & Core Agent Nodes:** Engineered specialized agents (Planner, Investigation, Analysis, Decision) using LangChain and ChatGroq, establishing isolated cognitive responsibilities.
 - **Milestone 2 — Tool Registry & ReAct Integration:** Integrated six enterprise diagnostic tools into a dynamic ReAct paradigm, enabling autonomous evidence gathering and action execution.
 - **Milestone 3 — State-Graph Orchestration & Memory:** Constructed the LangGraph state machine with conditional risk evaluation routing, and integrated SQLite long-term episodic memory (`agentsync_memory.db`) to enable past precedent recall.
 - **Milestone 4 — Full-Stack API, Dashboard & Deployment:** Built the FastAPI REST interface, React 19 + Vite operations console, incident ticket management center, and deployed the production stack on Render and Vercel.
+- **Milestone 5 — Dual-Stack HCM & Resource Matrix Integration:** Integrated the `-AI-Agent-Coordination-Decision-Engine` into a single unified web console, implemented 5 evidence-based HR agents, added `query_resource_matrix`, established the `< 100%` capacity headroom lock, and built zero-downtime in-process fallback architecture.
 
 ---
 
@@ -58,141 +64,145 @@ The engine is orchestrated using **LangGraph**, which passes a strictly typed `A
 [High / Standard Path]                          [Medium Path - Re-investigate]
          │                                               │
          ▼                                               │
-┌─────────────────────────┐                              │
-│     Decision Agent      │◄─────────────────────────────┘
-│ (Mitigation & Ticket)   │
-└────────────┬────────────┘
-             │
-             ├──────────────────────────┐
-             ▼                          ▼
-  ┌─────────────────────┐    ┌─────────────────────┐
-  │  Long-Term Memory   │    │   Incident Ticket   │
-  │ (Episodic Database) │    │  (Escalation / DB)  │
-  └─────────────────────┘    └─────────────────────┘
+    ┌────────────────┐                                   │
+    │ Decision Agent │ ◄─────────────────────────────────┘
+    └──────┬─────────┘
+           │
+           ▼
+    ┌───────────────────────┐
+    │ Resource Matrix Query │ ── Strict Skill Filter + <100% Capacity Enforcement
+    └──────┬────────────────┘
+           │
+     ┌─────┴────────────────────────┐
+     ▼                              ▼
+[ Long-Term Memory ]     [ Smart Assignment & Context Bundle ]
+(SQLite Memory DB)       (Disqualify Overloaded, Attach Telemetry)
 ```
 
-### 3.1 State Definition (`workflow/state.py`)
-The shared `AgentState` object tracks all operational context across the execution lifecycle:
-- `user_request` *(str)*: Initial incident notification or query.
-- `plan` *(str)*: Structured investigation plan generated by the Planner Agent.
-- `investigation_results` *(str)*: Diagnostic evidence synthesized across tool executions.
-- `analysis` *(str)*: Root cause evaluation and business impact analysis.
-- `decision` *(str)*: Comprehensive mitigation plan, action items, and ticket details.
-- `workflow_status` *(str)*: Current pipeline stage (`Started`, `Low Risk`, `High Risk`, `Completed`, `Error`).
-- `errors` *(List[str])*: Execution anomalies or caught exceptions.
-- `execution_metadata` *(Dict)*: Timing metrics, LLM call counts, and tool invocation counters.
+### The 9-Agent Fleet
 
-### 3.2 Agent Roles and Prompt Engineering
-
-1. **Planner Agent (`agents/planner_agent.py`)**:
-   - Synthesizes the raw problem statement into an ordered investigation strategy.
-   - Restricts operations purely to planning, preventing hallucinated premature diagnosis.
-
-2. **Investigation Agent (`agents/investigation_agent.py`)**:
-   - Operates as a ReAct (Reasoning + Acting) agent utilizing `create_react_agent`.
-   - Iteratively inspects service health, retrieves log traces, and checks network connectivity.
-
-3. **Analysis Agent (`agents/analysis_agent.py`)**:
-   - Correlates diagnostic findings against the initial report.
-   - Extracts root causes, evaluates business impact, and determines risk categorization.
-
-4. **Risk Evaluation Node (`workflow/agent_workflow.py`)**:
-   - Deterministic rule router assessing risk classifications.
-   - High-risk cases are escalated for human review; medium-risk anomalies trigger additional investigation passes; low/standard cases transition directly to decision synthesis.
-
-5. **Decision Agent (`agents/decision_agent.py`)**:
-   - Queries long-term episodic memory for past similar incident outcomes to ensure consistency.
-   - Formulates step-by-step mitigation runbooks with assigned owners and timelines.
-   - Automatically generates escalated Markdown incident tickets (`tickets/INC-XXXX.md`) when unmonitored or out-of-scope systems are detected.
-
----
-
-## 4. Enterprise Tool Ecosystem
-
-The Investigation Agent is equipped with six enterprise simulation tools implemented in `tools/`:
-
-| Tool Name | Module | Data Source | Functionality |
+| Agent | Tier | Role | Primary Responsibility |
 | :--- | :--- | :--- | :--- |
-| **`service_health_tool`** | `service_health_tool.py` | `enterprise_mock.db` | Queries real-time status, latency, and error rate across enterprise services (`Web Frontend`, `Payment API`, `Auth Service`, etc.). |
-| **`log_analyzer_tool`** | `log_analyzer_tool.py` | `enterprise_mock.db` | Scans log records within a specific time range to identify errors, warnings, and stack traces. |
-| **`incident_history_tool`** | `incident_history_tool.py` | `enterprise_mock.db` | Retrieves historical outages to match current symptoms with past resolutions. |
-| **`knowledge_base_tool`** | `knowledge_base_tool.py` | `enterprise_mock.db` | Retrieves Standard Operating Procedures (SOPs) and step-by-step service runbooks. |
-| **`external_api_tool`** | `external_api_tool.py` | Live HTTP / Network | Probes HTTP/HTTPS endpoints for external API reachability, handling status codes and timeout failures. |
-| **`incident_action_tool`** | `incident_action_tool.py` | Simulated ITSM | Programmatically creates, escalates, and resolves incident tickets with unique tracking IDs (`INC-XXXXXXXX`). |
+| **Planner Agent** | Incident | Strategy | Analyzes the initial report and defines a prioritized investigation checklist. |
+| **Investigation Agent** | Incident | Research / ReAct | Autonomously calls tools to gather diagnostics, inspect databases, and query knowledge bases. |
+| **Analysis Agent** | Incident | Diagnostics | Synthesizes technical evidence into root cause assessments and business risk tiers. |
+| **Decision Agent** | Incident | Resolution / Dispatch | Prescribes mitigation plans, triggers engineer matching, and bundles telemetry. |
+| **Workload Agent** | HCM | Capacity Enforcement | Tracks allocation %, enforces `< 100%` headroom threshold, prevents alert fatigue. |
+| **Project Fit Agent** | HCM | Talent Matching | Vector skill-profile indexing, incident domain mapping, fit score calculation. |
+| **Performance Agent** | HCM | Operational Metrics | Analyzes historical incident resolution velocity, code quality, and delivery track records. |
+| **Availability Agent** | HCM | Scheduling | Assesses active commitments, deadlines, and on-call bandwidth reservations. |
+| **Employee Wellbeing Agent** | HCM | Safety & Burnout | Monitors stress indices, detects rapid load spikes, triggers early HR interventions. |
 
 ---
 
-## 5. Dual-Layer Memory Architecture
+## 4. Strict Skill Filtering & Workload Headroom Enforcement Specification
 
-### 5.1 Short-Term Working Memory
-Maintained natively in memory through the LangGraph runtime. Context accumulates monotonically as state transitions from node to node, ensuring each agent operates on verified upstream evidence.
+### Hard Constraints in Engineer Assignment
 
-### 5.2 Long-Term Episodic Memory (`memory/memory_manager.py`)
-Persisted in SQLite (`agentsync_memory.db`). Upon workflow completion, the full lifecycle record (`user_request`, `plan`, `research_results`, `analysis`, `decision`, `timestamp`) is committed.
-- **Precedent Retrieval**: Before decision generation, keyword heuristics and memory indices retrieve past similar incidents to guide resolution strategies.
+1. **Skill-Aware Filtering**:
+   - The system ingests service identifiers, error keywords, and technology tags from the incident investigation.
+   - Operative profiles (e.g., Vance Sterling: `AWS`, `Kubernetes`, `Terraform`; Tariq Mansoor: `Rust`, `Kubernetes`, `OAuth`, `Auth Service`) are indexed and matched against these tags.
 
----
+2. **Workload Headroom Enforcement (`< 100%` Threshold)**:
+   - Any engineer whose active workload equals or exceeds `100%` of maximum capacity is **immediately disqualified** from incident assignment, regardless of skill match score.
+   - Example baseline: Dr. Elena Rostova (`NEURAL`, 115% capacity) and Lucas Drake (`120% capacity`) are locked out to protect employee wellbeing and prevent alert fatigue.
 
-## 6. Persistence & Database Schemas
-
-### 6.1 `enterprise_mock.db` (Simulated Enterprise Infrastructure)
-- **`service_health`**: Tracks service status, latency, and error metrics.
-  - `service` *(TEXT PRIMARY KEY)*, `status` *(TEXT)*, `latency_ms` *(REAL)*, `error_rate` *(REAL)*
-- **`service_logs`**: Application events and diagnostics.
-  - `id` *(INTEGER PK)*, `service` *(TEXT)*, `timestamp` *(TEXT)*, `level` *(TEXT)*, `message` *(TEXT)*
-- **`historical_incidents`**: Archived enterprise incident records.
-  - `incident_id` *(TEXT PK)*, `service` *(TEXT)*, `description` *(TEXT)*, `resolution` *(TEXT)*
-- **`service_runbooks`**: Standard remediation procedures.
-  - `id` *(INTEGER PK)*, `service` *(TEXT)*, `step_number` *(INTEGER)*, `step_description` *(TEXT)*
-- **`sales`**: Reference enterprise database table for tabular state queries.
-  - `id` *(INTEGER PK)*, `region` *(TEXT)*, `revenue` *(REAL)*, `quarter` *(TEXT)*
-
-### 6.2 `agentsync_memory.db` (Orchestration Long-Term Memory)
-- **`workflow_history`**: Persistent record of resolved incidents.
-  - `id` *(INTEGER PK AUTOINCREMENT)*, `user_request` *(TEXT)*, `plan` *(TEXT)*, `research_results` *(TEXT)*, `analysis` *(TEXT)*, `decision` *(TEXT)*, `timestamp` *(DATETIME)*
+3. **Dynamic Workload Allocation & Stress Recalculation**:
+   - When an eligible engineer is selected, their allocated capacity is incremented by `+15%` for the duration of the incident.
+   - The stress index is recalculated dynamically:
+     $$\text{Stress Index} = \min\left(100, \text{round}\left(\frac{\text{Allocated Capacity}}{100} \times 45\right)\right)$$
+   - If the new capacity exceeds `85%` or the stress index reaches `70`, the system flags an automated **Wellbeing Safeguard Warning** with managerial check-in recommendations.
 
 ---
 
-## 7. REST API & Web Dashboard Specification
+## 5. Contextual Handoff & Telemetry Bundling Schema
 
-### 7.1 Backend API Specification (`api/main.py`)
-- `POST /workflow/run`: Triggers the synchronous multi-agent orchestration workflow.
-- `GET /workflow/status/{job_id}`: Retrieves execution state for a session job.
-- `POST /workflow/chat/{job_id}`: Scoped resolution copilot follow-up chat endpoint.
-- `GET /incidents/history`: Retrieves paginated investigation logs from memory.
-- `GET /incidents/history/{record_id}`: Returns full lifecycle details of an archived incident.
-- `GET /tickets`: Aggregates active, escalated, and historical tickets across file storage and databases.
-- `GET /tickets/{ticket_id}`: Detailed inspection of an individual ticket record.
-- `GET /agents`: Returns registered agent metadata, roles, and capability rosters.
-- `GET /tools`: Returns registered tool documentation, data sources, and parameters.
-- `GET /metrics`: Returns platform telemetry, session counters, and uptime metrics.
-- `GET /health`: Comprehensive health check validating API, database connectivity, and LLM configuration.
+To eliminate onboarding friction during high-stress outages, the system compiles a `ContextBundle` attached directly to the incident ticket:
 
-### 7.2 Frontend Web Console (`frontend/src/App.jsx`)
-- Built with **React 19** and **Vite**, adhering to modern enterprise dashboard ergonomics:
-  - **Platform Dashboard**: Real-time telemetry, session metrics, platform configuration, and component health chips.
-  - **Incident Resolution Center**: Interactive prompt console with sample incident templates, real-time stage progress indicators, tabbed evidence viewer (Plan, Investigation, Analysis, Decision), and an embedded **Resolution Copilot**.
-  - **Incident Tickets**: Filterable enterprise ticket catalog with modal inspection for generated markdown artifacts and resolution summaries.
-  - **Investigations Log**: Historical database browser allowing drill-down into past runs.
-  - **Agent Fleet Console**: Operational status, role descriptions, and capability badges for each agent.
-  - **Enterprise Tools Registry**: Interactive parameter and data source catalog for all integrated tools.
-  - **Configuration & Settings**: Platform parameters, active LLM model indicator, and API documentation shortcuts.
-
----
-
-## 8. Quality Assurance & Test Coverage
-
-The platform contains an automated test suite executed via `pytest`:
-- **`tests/test_agents.py`**: Unit tests verifying Planner reasoning, risk evaluation thresholds (high/low risk), and state consistency.
-- **`tests/test_tools.py`**: Unit tests validating all 6 enterprise tools, boundary conditions, invalid parameters, and network timeouts.
-- **`tests/test_api.py`**: Integration tests verifying all REST endpoints, validation errors, error handling, and ticket retrieval.
-
-**Current Test Status**: 30/30 tests passing.
+```json
+{
+  "assigned_to": {
+    "id": "OP-04",
+    "name": "Tariq Mansoor",
+    "callsign": "AEGIS",
+    "role": "Cyber Defense Specialist",
+    "capacity_before": 60,
+    "capacity_after": 75,
+    "stress_index": 34
+  },
+  "fit_score": 85,
+  "matched_skills": ["Rust", "Kubernetes", "Auth Service"],
+  "remaining_headroom": 25,
+  "wellbeing_alert": null,
+  "incident_diagnostics": {
+    "incident_summary": "Payment API is failing with database timeout errors",
+    "affected_service": "Payment API",
+    "root_cause": "Database connection pool exhaustion and unreachable replica",
+    "recommended_runbook": "Payment API - Database Connection Pool Exhaustion SOP",
+    "raw_logs_snippet": "ConnectionTimeout: could not obtain connection within 5000ms"
+  }
+}
+```
 
 ---
 
-## 9. Production Deployment Architecture
+## 6. Dual-Stack Integration & Fault-Tolerant Fallback
 
-- **Backend**: Hosted on Render as a persistent web service running Uvicorn.
-- **Frontend**: Hosted on Vercel as a single-page application using client-side routing rewrites (`frontend/vercel.json`).
-- **Dynamic Configuration**: The frontend dynamically binds to the backend via `import.meta.env.VITE_API_URL`, supporting seamless transitions between local development (`http://localhost:8000`) and cloud environments.
+The architecture unites two complementary technologies:
+- **Primary Orchestrator**: Python 3.10+ FastAPI + LangGraph state machine.
+- **Human Capital Matrix**: Node.js/Express service at `http://localhost:5000`.
+
+### Fault-Tolerance Mechanism
+- When the Node.js microservice is reachable, state synchronizes across HTTP REST calls (`GET /api/state`).
+- If the auxiliary microservice experiences network partition, maintenance, or downtime, the Python controller (`hcm_manager.py`) **automatically and transparently falls back to in-process evaluation**.
+- Operational interruption is exactly **zero (0%)**, ensuring incident resolution and engineer assignment never fail due to auxiliary service outages.
+
+---
+
+## 7. Enterprise Tool Ecosystem (7 Tools)
+
+| Tool ID | Function | Target Data Source |
+| :--- | :--- | :--- |
+| `analyze_logs` | Extracts recent error traces and anomalous frequencies. | `enterprise_mock.db / service_logs` |
+| `check_health` | Queries latency, CPU, and operational status of monitored microservices. | `enterprise_mock.db / service_health` |
+| `search_incident_history` | Semantic and keyword search of past outages and historical resolutions. | `enterprise_mock.db / historical_incidents` |
+| `search_runbooks` | Retrieves approved standard operating procedures and mitigation playbooks. | `enterprise_mock.db / service_runbooks` |
+| `manage_incident` | Programmatically creates, escalates, or resolves tickets in the ITSM layer. | Simulated ITSM system |
+| `check_external_service_status` | Executes live HTTP probes against third-party endpoints. | External APIs / Public Web |
+| `query_resource_matrix` | Queries real-time HCM capacity, skill matches, and team headroom. | HCM Operative Allocation Matrix |
+
+---
+
+## 8. Unified Web Interface Specification
+
+The frontend delivers a **single, unified web console** built with React 19 + Vite:
+- **Platform Dashboard**: High-level platform health, LangGraph execution metrics, team bandwidth averages, and capacity overload alerts.
+- **Incident Resolution Center**: Real-time pipeline animations, execution plan viewer, root-cause diagnostics, and the **Smart Resource Assignment & Contextual Handoff** card.
+- **Resource Matrix & HCM Console**: Operative roster with cyberpunk avatars, callsigns, capacity progress bars (Nominal / Elevated / Overload), interactive project allocation matrix table, and on-demand 5-Agent HR Review drawer.
+- **Enterprise Missions**: Mission forge modal and active project dependency cards (PRJ-101 to PRJ-105).
+- **Incident Tickets**: Ticket management console with assigned operative tags and pre-packaged context bundles.
+- **Investigations**: Long-term memory query interface powered by SQLite persistence.
+- **Agent Fleet**: Operational dashboard displaying all 9 autonomous agents.
+- **Settings & Dual-Stack**: Live connection pulse, architecture diagram, and in-process fallback indicators.
+
+---
+
+## 9. Verification & Test Suite Matrix
+
+The platform is continuously verified via an automated test suite comprising **37 tests** across 4 test suites:
+
+| Test Suite | File | Tests | Status |
+| :--- | :--- | :---: | :---: |
+| **Agent Reasoning & Workflow** | `tests/test_agents.py` | 4 | ✅ Passed |
+| **API Endpoints & Contracts** | `tests/test_api.py` | 16 | ✅ Passed |
+| **HCM Manager & Headroom Lock** | `tests/test_hcm.py` | 7 | ✅ Passed |
+| **Enterprise Tools Execution** | `tests/test_tools.py` | 10 | ✅ Passed |
+| **Total** | | **37** | **100% Pass** |
+
+---
+
+## 10. Production Deployment
+
+- **Frontend Console**: Deployed on **Vercel** (`https://agent-sync.vercel.app`) using SPA rewrites configured in `frontend/vercel.json`.
+- **Backend API**: Deployed on **Render** as a persistent web service running `uvicorn api.main:app --host 0.0.0.0 --port $PORT`.
+- **Dual-Stack Fallback**: Guaranteed zero-downtime execution in both local development and cloud production environments.

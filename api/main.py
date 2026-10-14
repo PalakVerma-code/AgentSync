@@ -15,6 +15,7 @@ from datetime import datetime
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from utils.logging_config import setup_logger, global_metrics
+from hcm.hcm_manager import hcm_manager
 
 logger = setup_logger("api")
 
@@ -67,9 +68,34 @@ class WorkflowResponse(BaseModel):
     decision: str = ""
     execution_metrics: Dict[str, Any] = {}
     errors: List[str] = []
+    assigned_engineer: Optional[Dict[str, Any]] = None
+    context_bundle: Optional[Dict[str, Any]] = None
+    wellbeing_alert: Optional[Dict[str, Any]] = None
 
 class ChatMessage(BaseModel):
     message: str
+
+class MatrixToggleRequest(BaseModel):
+    operative_id: str
+    project_id: str
+
+class MatchRequest(BaseModel):
+    skills: List[str] = []
+    incident_summary: Optional[str] = None
+    service: Optional[str] = None
+
+class HrReviewRequest(BaseModel):
+    employee_id: str
+    project_id: Optional[str] = None
+
+class ForgeMissionRequest(BaseModel):
+    title: str
+    department: Optional[str] = "Engineering Operations"
+    difficulty: Optional[str] = "Tier III - Advanced"
+    budget: Optional[str] = "$250,000"
+    deadline: Optional[str] = "2027-03-31"
+    required_skills: List[str] = []
+    required_slots: Optional[int] = 3
 
 
 # ─── Workflow Endpoints ───────────────────────────────────────────────────────
@@ -97,7 +123,10 @@ async def run_workflow(req: WorkflowRequest):
             analysis=final_state.get("analysis", ""),
             decision=final_state.get("decision", ""),
             execution_metrics=final_state.get("execution_metadata", {}),
-            errors=final_state.get("errors", [])
+            errors=final_state.get("errors", []),
+            assigned_engineer=final_state.get("assigned_engineer"),
+            context_bundle=final_state.get("context_bundle"),
+            wellbeing_alert=final_state.get("wellbeing_alert")
         )
 
         workflow_jobs[job_id] = {
@@ -212,10 +241,55 @@ async def list_agents():
                 "id": "decision",
                 "name": "Decision Agent",
                 "role": "Decision Support",
-                "description": "Formulates final mitigation strategies and resolution steps based on analysis. Escalates unmonitored services automatically.",
+                "description": "Formulates final mitigation strategies, performs skill-aware engineer matching, and constructs contextual telemetry bundles.",
                 "model": settings.DEFAULT_MODEL,
                 "status": "Online",
-                "capabilities": ["Resolution strategy", "Ticket creation", "Escalation logic", "Recommendation generation"]
+                "capabilities": ["Resolution strategy", "Smart HCM assignment", "Ticket creation", "Contextual handoff", "Wellbeing safeguards"]
+            },
+            {
+                "id": "workload_agent",
+                "name": "Workload & Headroom Agent",
+                "role": "Capacity Enforcement",
+                "description": "Monitors team utilization, enforces the strict < 100% capacity headroom threshold, and disqualifies overloaded personnel to prevent burnout.",
+                "model": "Deterministic + LLM Evaluation",
+                "status": "Online",
+                "capabilities": ["Capacity tracking", "Overload disqualification", "Headroom optimization"]
+            },
+            {
+                "id": "project_fit_agent",
+                "name": "Project Fit & Skill Agent",
+                "role": "Talent Matching",
+                "description": "Computes high-dimensional skill match percentages against incident domains and enterprise mission requirements.",
+                "model": "Deterministic + LLM Evaluation",
+                "status": "Online",
+                "capabilities": ["Skill profile indexing", "Incident domain mapping", "Fit score calculation"]
+            },
+            {
+                "id": "performance_agent",
+                "name": "Performance & Reliability Agent",
+                "role": "Operations Assessment",
+                "description": "Analyzes historical incident resolution velocity, code quality scores, and past execution reliability metrics.",
+                "model": "Deterministic + LLM Evaluation",
+                "status": "Online",
+                "capabilities": ["Velocity tracking", "Quality assessment", "Operational scoring"]
+            },
+            {
+                "id": "availability_agent",
+                "name": "Real-Time Availability Agent",
+                "role": "Scheduling & Bandwidth",
+                "description": "Assesses active incident commitments and project deadlines to determine immediate responder availability.",
+                "model": "Deterministic + LLM Evaluation",
+                "status": "Online",
+                "capabilities": ["Bandwidth reservation", "Shift monitoring", "Conflict detection"]
+            },
+            {
+                "id": "employee_wellbeing_agent",
+                "name": "Wellbeing Safeguard Agent",
+                "role": "Safety & Burnout Prevention",
+                "description": "Monitors stress indices, detects rapid responsibility spikes, and flags early warning alerts for human management review.",
+                "model": "Deterministic + LLM Evaluation",
+                "status": "Online",
+                "capabilities": ["Stress index monitoring", "Burnout alarm", "Capacity limits", "HR intervention triggers"]
             }
         ]
     }
@@ -430,9 +504,91 @@ async def list_tools():
                 "category": "Action",
                 "data_source": "Internet / External APIs",
                 "parameters": ["service_url"]
+            },
+            {
+                "id": "query_resource_matrix",
+                "name": "Resource Allocation Matrix",
+                "description": "Queries real-time Human Capital Management (HCM) capacity, skill matching, and workload headroom to prevent burnout.",
+                "category": "Decision Support",
+                "data_source": "HCM Matrix & Operative Profiles",
+                "parameters": ["action", "query"]
             }
         ]
     }
+
+
+# ─── HCM & Resource Matrix Endpoints ─────────────────────────────────────────
+
+@app.get("/hcm/state", tags=["HCM"])
+async def get_hcm_state():
+    """Returns the full HCM state: operatives, projects, telemetry logs, and dual-stack status."""
+    sync_status = hcm_manager.sync_with_node_hcm()
+    return {
+        "operatives": hcm_manager.get_operatives(),
+        "projects": hcm_manager.get_projects(),
+        "telemetry_logs": hcm_manager.get_telemetry_logs(),
+        "sync_status": sync_status
+    }
+
+
+@app.get("/hcm/operatives", tags=["HCM"])
+async def get_hcm_operatives():
+    """List all registered operatives with live capacity, stress index, and skills."""
+    return {"total": len(hcm_manager.get_operatives()), "operatives": hcm_manager.get_operatives()}
+
+
+@app.get("/hcm/projects", tags=["HCM"])
+async def get_hcm_projects():
+    """List all enterprise missions and projects."""
+    return {"total": len(hcm_manager.get_projects()), "projects": hcm_manager.get_projects()}
+
+
+@app.post("/hcm/matrix/toggle", tags=["HCM"])
+async def toggle_matrix_allocation(req: MatrixToggleRequest):
+    """Toggle an operative's allocation to a mission, dynamically recalculating load and stress."""
+    res = hcm_manager.toggle_allocation(req.operative_id, req.project_id)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to update allocation."))
+    return res
+
+
+@app.post("/hcm/match", tags=["HCM"])
+async def match_engineer_endpoint(req: MatchRequest):
+    """Skill-aware matching with strict < 100% capacity headroom enforcement."""
+    incident_details = {
+        "summary": req.incident_summary or "Active Production Outage",
+        "service": req.service or "Enterprise Service"
+    }
+    return hcm_manager.match_engineer(req.skills, incident_details)
+
+
+@app.post("/hcm/hr-review", tags=["HCM"])
+async def run_hr_review_endpoint(req: HrReviewRequest):
+    """Executes the 5-agent HR assessment on an operative with optional mission fit."""
+    res = hcm_manager.run_hr_review(req.employee_id, req.project_id)
+    if "error" in res:
+        raise HTTPException(status_code=404, detail=res["error"])
+    return res
+
+
+@app.post("/hcm/projects/forge", tags=["HCM"])
+async def forge_project_endpoint(req: ForgeMissionRequest):
+    """Creates a new mission / project in the enterprise matrix."""
+    return hcm_manager.forge_project(
+        title=req.title,
+        department=req.department or "Operations",
+        difficulty=req.difficulty or "Tier III - Advanced",
+        budget=req.budget or "$250,000",
+        deadline=req.deadline or "2027-03-31",
+        required_skills=req.required_skills,
+        required_slots=req.required_slots or 3
+    )
+
+
+@app.get("/hcm/status", tags=["HCM"])
+async def get_hcm_status():
+    """Returns dual-stack status with Node.js service / in-process fallback."""
+    return hcm_manager.sync_with_node_hcm()
 
 
 # ─── Metrics & Monitoring Endpoints ───────────────────────────────────────────
@@ -471,6 +627,13 @@ async def get_metrics():
     ]
     avg_duration = round(sum(durations) / len(durations), 2) if durations else 0
 
+    # HCM Metrics
+    operatives = hcm_manager.get_operatives()
+    overloaded_ops = sum(1 for o in operatives if o.get("allocatedCapacity", 0) >= 100)
+    elevated_stress = sum(1 for o in operatives if o.get("stressIndex", 0) >= 70)
+    avg_capacity = round(sum(o.get("allocatedCapacity", 0) for o in operatives) / max(1, len(operatives)), 1)
+    avg_headroom = round(max(0, 100 - avg_capacity), 1)
+
     return {
         "platform": {
             "name": "AgentSync",
@@ -480,8 +643,10 @@ async def get_metrics():
             "status": "Operational"
         },
         "agents": {
-            "total": 4,
-            "online": 4,
+            "total": 9,
+            "online": 9,
+            "workflow_agents": 4,
+            "hcm_agents": 5,
             "model": settings.DEFAULT_MODEL
         },
         "workflows": {
@@ -494,8 +659,17 @@ async def get_metrics():
             "avg_duration_seconds": avg_duration
         },
         "tools": {
-            "total": 6,
-            "categories": ["Observability", "Knowledge", "Action"]
+            "total": 7,
+            "categories": ["Observability", "Knowledge", "Action", "Decision Support"]
+        },
+        "hcm": {
+            "total_operatives": len(operatives),
+            "overloaded_count": overloaded_ops,
+            "elevated_stress_count": elevated_stress,
+            "average_capacity_pct": avg_capacity,
+            "average_headroom_pct": avg_headroom,
+            "active_missions": len(hcm_manager.get_projects()),
+            "telemetry_entries": len(hcm_manager.get_telemetry_logs())
         },
         "api": {
             "total_requests_session": total_requests,
@@ -516,6 +690,7 @@ async def health_check():
         db_ok = False
 
     llm_ok = bool(settings.GROQ_API_KEY)
+    hcm_sync = hcm_manager.sync_with_node_hcm()
 
     return {
         "status": "healthy" if (db_ok and llm_ok) else "degraded",
@@ -524,6 +699,8 @@ async def health_check():
             "api": "ok",
             "database": "ok" if db_ok else "error",
             "llm_provider": "ok" if llm_ok else "not_configured",
-            "agents": "online"
+            "agents": "online",
+            "hcm_matrix": "online",
+            "dual_stack_mode": hcm_sync.get("mode", "in_process_fallback")
         }
     }

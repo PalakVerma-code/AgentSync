@@ -1,0 +1,276 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  color: #172b4d;
+  background: #f3f6fa;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: #f3f6fa;
+  color: #172b4d;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+code,
+pre {
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.font-mono {
+  font-family: inherit !important;
+  letter-spacing: normal !important;
+}
+
+[class~="bg-[#07090e]"],
+[class~="bg-[#07090e]/90"] {
+  background-color: #f3f6fa !important;
+}
+
+header.sticky {
+  background: #fff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 5%);
+  backdrop-filter: none;
+}
+
+header.sticky :is(span, p) {
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.cyber-glass,
+.cyber-glass-glow,
+.cyber-glass-violet {
+  background: #fff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 5%) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[class~="bg-[#0d111a]"],
+[class~="bg-[#0a0f18]"],
+[class~="bg-slate-950"],
+[class~="bg-slate-950/80"],
+[class~="bg-slate-900"],
+[class~="bg-slate-900/90"] {
+  background-color: #f8fafc !important;
+}
+
+[class~="bg-slate-800"],
+[class~="bg-slate-800/80"] {
+  background-color: #f1f5f9 !important;
+}
+
+[class~="bg-purple-950"],
+[class~="bg-purple-950/70"],
+[class~="bg-red-950"],
+[class~="bg-red-950/90"],
+[class~="bg-amber-950"],
+[class~="bg-amber-950/90"],
+[class~="bg-emerald-950/90"],
+[class~="bg-cyan-950/90"] {
+  background-color: #f8fafc !important;
+}
+
+[class~="text-white"] {
+  color: #172b4d !important;
+}
+
+[class~="text-slate-100"],
+[class~="text-slate-200"],
+[class~="text-slate-300"] {
+  color: #334155 !important;
+}
+
+[class~="text-slate-400"],
+[class~="text-slate-500"] {
+  color: #64748b !important;
+}
+
+[class~="text-[#00f2fe]"],
+[class~="text-[#00f5d4]"],
+[class~="text-[#00c2cb]"],
+[class~="text-[#9d4edd]"],
+[class~="text-purple-200"],
+[class~="text-purple-300"],
+[class~="text-cyan-200"] {
+  color: #2563a6 !important;
+}
+
+[class~="text-[#ffb703]"],
+[class~="text-amber-200"] {
+  color: #a16207 !important;
+}
+
+[class~="text-[#ff0055]"],
+[class~="text-red-200"],
+[class~="text-rose-300"] {
+  color: #b42318 !important;
+}
+
+[class~="text-emerald-200"] {
+  color: #18794e !important;
+}
+
+[class~="border-slate-700"],
+[class~="border-slate-800"],
+[class~="border-slate-800/60"],
+[class~="border-slate-800/80"] {
+  border-color: #e2e8f0 !important;
+}
+
+[class~="bg-[#00f2fe]/10"],
+[class~="bg-[#00f2fe]/20"],
+[class~="bg-[#00f5d4]/10"],
+[class~="bg-[#00f5d4]/20"],
+[class~="bg-[#9d4edd]/20"],
+[class~="bg-[#9d4edd]/40"] {
+  background-color: #eaf1f9 !important;
+}
+
+[class~="bg-[#ff0055]"],
+[class~="bg-[#ff0055]/20"],
+[class~="bg-red-950/90"] {
+  background-color: #fcebea !important;
+}
+
+[class~="bg-[#ffb703]"],
+[class~="bg-amber-950/90"] {
+  background-color: #fff5df !important;
+}
+
+[class~="bg-[#00f5d4]"],
+[class~="bg-[#00c2cb]"] {
+  background-color: #dceee8 !important;
+}
+
+[class~="bg-black/80"] {
+  background-color: rgb(23 43 77 / 38%) !important;
+}
+
+[class~="border-[#00f2fe]"],
+[class~="border-[#00f2fe]/10"],
+[class~="border-[#00f2fe]/20"],
+[class~="border-[#00f2fe]/30"],
+[class~="border-[#00f2fe]/40"],
+[class~="border-[#00f2fe]/50"],
+[class~="border-[#00f5d4]"],
+[class~="border-[#00f5d4]/40"],
+[class~="border-[#9d4edd]/40"],
+[class~="border-[#9d4edd]/50"],
+[class~="border-purple-800"],
+[class~="border-purple-800/70"],
+[class~="border-purple-900/40"] {
+  border-color: #cbd8e8 !important;
+}
+
+[class~="border-[#ff0055]/50"],
+[class~="border-red-800"] {
+  border-color: #f2c5c1 !important;
+}
+
+[class~="border-[#ffb703]/50"],
+[class~="border-amber-800"] {
+  border-color: #ead8b2 !important;
+}
+
+[class~="bg-gradient-to-r"],
+[class~="bg-gradient-to-br"] {
+  background-image: none !important;
+  background-color: #2563a6 !important;
+}
+
+[class~="bg-gradient-to-br"] {
+  background-color: #eaf1f9 !important;
+}
+
+[class~="rounded-3xl"],
+[class~="rounded-2xl"] {
+  border-radius: 12px !important;
+}
+
+[class~="shadow-inner"],
+[class*="shadow-["] {
+  box-shadow: 0 1px 3px rgb(15 23 42 / 8%) !important;
+}
+
+[class~="animate-pulse"],
+[class~="animate-ping"] {
+  animation: none !important;
+}
+
+input,
+select,
+textarea {
+  border-color: #cbd5e1 !important;
+  background-color: #fff !important;
+  color: #172b4d !important;
+}
+
+input::placeholder {
+  color: #94a3b8 !important;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgb(37 99 166 / 25%);
+  outline-offset: 2px;
+}
+
+button {
+  box-shadow: none;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+main :is(h1, h2, h3, h4, label) {
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+[class~="hover:text-white"]:hover {
+  color: #172b4d !important;
+}
+
+thead {
+  background: #f8fafc;
+}
+
+th {
+  color: #475569;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

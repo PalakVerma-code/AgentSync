@@ -30,3 +30,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Node / Frontend builds
+node_modules/
+dist/
+dist-ssr/

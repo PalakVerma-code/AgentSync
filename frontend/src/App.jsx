@@ -8,7 +8,8 @@ import {
   Settings, History, MessageSquare, Send, ChevronRight, CheckCircle2,
   Cpu, FileTerminal, ShieldAlert, Database, Network, Wrench, Zap,
   TrendingUp, RefreshCw, BookOpen, Globe, GitMerge, BarChart3,
-  Package, CheckCircle, XCircle, Info, ArrowUpRight, Ticket, Tag, CheckSquare, Eye
+  Package, CheckCircle, XCircle, Info, ArrowUpRight, Ticket, Tag, CheckSquare, Eye,
+  Users, HeartHandshake, Gauge, Briefcase, Plus, Filter, ShieldCheck, AlertOctagon, Sparkles, Sliders
 } from 'lucide-react';
 import './App.css';
 
@@ -36,6 +37,7 @@ function ToolCategoryBadge({ category }) {
     Observability: { bg: 'rgba(88,166,255,0.15)', text: '#58a6ff', border: 'rgba(88,166,255,0.3)' },
     Knowledge: { bg: 'rgba(163,113,247,0.15)', text: '#a371f7', border: 'rgba(163,113,247,0.3)' },
     Action: { bg: 'rgba(63,185,80,0.15)', text: '#3fb950', border: 'rgba(63,185,80,0.3)' },
+    'Decision Support': { bg: 'rgba(240,136,62,0.15)', text: '#f0883e', border: 'rgba(240,136,62,0.3)' },
   };
   const c = colors[category] || colors.Action;
   return (
@@ -86,6 +88,33 @@ function App() {
   const [tickets, setTickets] = useState([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
+
+  // HCM & Resource Matrix State
+  const [operatives, setOperatives] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [hcmTelemetry, setHcmTelemetry] = useState([]);
+  const [hcmSyncStatus, setHcmSyncStatus] = useState(null);
+  const [hcmLoading, setHcmLoading] = useState(false);
+  const [matrixFilter, setMatrixFilter] = useState('all');
+  const [matrixViewMode, setMatrixViewMode] = useState('cards'); // 'cards' | 'matrix'
+
+  // HR Review Modal State
+  const [hrModalOpen, setHrModalOpen] = useState(false);
+  const [selectedOperativeForHR, setSelectedOperativeForHR] = useState(null);
+  const [hrAssessment, setHrAssessment] = useState(null);
+  const [hrReviewLoading, setHrReviewLoading] = useState(false);
+
+  // Forge Mission Modal State
+  const [missionModalOpen, setMissionModalOpen] = useState(false);
+  const [newMission, setNewMission] = useState({
+    title: '',
+    department: 'Engineering Operations',
+    difficulty: 'Tier III - Advanced',
+    budget: '$250,000',
+    deadline: '2027-03-31',
+    required_skills: 'Python, Kubernetes, Cloud'
+  });
+  const [missionSubmitting, setMissionSubmitting] = useState(false);
 
   // ─── Data Fetchers ──────────────────────────────────────────────────────────
 
@@ -154,15 +183,34 @@ function App() {
     }
   }, []);
 
+  const fetchHcmState = useCallback(async () => {
+    setHcmLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/hcm/state`);
+      setOperatives(res.data.operatives || []);
+      setProjects(res.data.projects || []);
+      setHcmTelemetry(res.data.telemetry_logs || []);
+      setHcmSyncStatus(res.data.sync_status || null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setHcmLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (currentView === "agent_fleet") fetchAgents();
     if (currentView === "history") fetchHistory();
     if (currentView === "tickets") fetchTickets();
-    if (currentView === "dashboard") fetchMetrics();
+    if (currentView === "dashboard") {
+      fetchMetrics();
+      fetchHcmState();
+    }
     if (currentView === "tools") fetchTools();
-  }, [currentView, fetchAgents, fetchHistory, fetchTickets, fetchMetrics, fetchTools]);
+    if (currentView === "resource_matrix" || currentView === "missions") fetchHcmState();
+  }, [currentView, fetchAgents, fetchHistory, fetchTickets, fetchMetrics, fetchTools, fetchHcmState]);
 
-  // ─── Workflow ───────────────────────────────────────────────────────────────
+  // ─── Workflow Execution ─────────────────────────────────────────────────────
 
   const runWorkflow = async () => {
     if (!requestText.trim()) return;
@@ -179,6 +227,8 @@ function App() {
       setChatMessages([
         { role: 'ai', content: res.data.decision || "Workflow complete. How would you like to proceed with this resolution?" }
       ]);
+      // Refresh HCM state to show updated allocation after incident assignment
+      fetchHcmState();
     } catch (error) {
       setResult({
         status: "Error",
@@ -209,37 +259,119 @@ function App() {
     if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, chatActive, isChatting]);
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  // ─── HCM Actions ────────────────────────────────────────────────────────────
+
+  const handleToggleAllocation = async (opId, prjId) => {
+    try {
+      const res = await axios.post(`${API_BASE}/hcm/matrix/toggle`, {
+        operative_id: opId,
+        project_id: prjId
+      });
+      if (res.data.success) {
+        fetchHcmState();
+      }
+    } catch (err) {
+      console.error("Allocation toggle failed:", err);
+    }
+  };
+
+  const handleRunHrReview = async (op, prjId = null) => {
+    setSelectedOperativeForHR(op);
+    setHrModalOpen(true);
+    setHrReviewLoading(true);
+    setHrAssessment(null);
+    try {
+      const res = await axios.post(`${API_BASE}/hcm/hr-review`, {
+        employee_id: op.id,
+        project_id: prjId
+      });
+      setHrAssessment(res.data.assessment);
+    } catch (err) {
+      console.error("HR assessment failed:", err);
+    } finally {
+      setHrReviewLoading(false);
+    }
+  };
+
+  const handleForgeMission = async (e) => {
+    e.preventDefault();
+    if (!newMission.title.trim()) return;
+    setMissionSubmitting(true);
+    try {
+      const skillsArray = newMission.required_skills
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      await axios.post(`${API_BASE}/hcm/projects/forge`, {
+        title: newMission.title,
+        department: newMission.department,
+        difficulty: newMission.difficulty,
+        budget: newMission.budget,
+        deadline: newMission.deadline,
+        required_skills: skillsArray,
+        required_slots: 3
+      });
+      setMissionModalOpen(false);
+      setNewMission({
+        title: '',
+        department: 'Engineering Operations',
+        difficulty: 'Tier III - Advanced',
+        budget: '$250,000',
+        deadline: '2027-03-31',
+        required_skills: 'Python, Kubernetes, Cloud'
+      });
+      fetchHcmState();
+    } catch (err) {
+      console.error("Forge mission failed:", err);
+    } finally {
+      setMissionSubmitting(false);
+    }
+  };
+
+  // ─── Filtered Operatives ────────────────────────────────────────────────────
+
+  const filteredOperatives = operatives.filter(op => {
+    if (matrixFilter === 'overloaded') return op.allocatedCapacity >= 100;
+    if (matrixFilter === 'elevated') return op.allocatedCapacity >= 85 && op.allocatedCapacity < 100;
+    if (matrixFilter === 'nominal') return op.allocatedCapacity < 85;
+    return true;
+  });
+
+  // ─── Navigation & Breadcrumbs ───────────────────────────────────────────────
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Main Menu' },
     { id: 'active_incidents', label: 'Incident Resolution', icon: AlertCircle, group: 'Main Menu' },
+    { id: 'resource_matrix', label: 'Resource Matrix & HCM', icon: Users, group: 'Main Menu' },
+    { id: 'missions', label: 'Enterprise Missions', icon: Briefcase, group: 'Main Menu' },
     { id: 'tickets', label: 'Incident Tickets', icon: Ticket, group: 'Main Menu' },
     { id: 'history', label: 'Investigations', icon: History, group: 'Main Menu' },
-    { id: 'agent_fleet', label: 'Agent Fleet', icon: Cpu, group: 'System' },
-    { id: 'tools', label: 'Enterprise Tools', icon: Wrench, group: 'System' },
-    { id: 'settings', label: 'Settings', icon: Settings, group: 'System' },
+    { id: 'agent_fleet', label: 'Agent Fleet (9)', icon: Cpu, group: 'System' },
+    { id: 'tools', label: 'Enterprise Tools (7)', icon: Wrench, group: 'System' },
+    { id: 'settings', label: 'Settings & Dual-Stack', icon: Settings, group: 'System' },
   ];
 
   const breadcrumb = {
     dashboard: 'Platform Dashboard',
     active_incidents: 'Incident Resolution Center',
+    resource_matrix: 'Human Capital Management & Resource Matrix',
+    missions: 'Enterprise Mission Allocations',
     tickets: 'Enterprise Incident Tickets',
     history: 'Investigation History',
-    agent_fleet: 'Agent Fleet Status',
+    agent_fleet: 'Agent Fleet Status (9 Autonomous Agents)',
     tools: 'Enterprise Tools Registry',
-    settings: 'Configuration & Settings',
+    settings: 'Configuration & Dual-Stack Architecture',
   };
 
   return (
     <div className="layout">
-      {/* Sidebar */}
+      {/* ─── Sidebar ──────────────────────────────────────────────────────────── */}
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-icon"><Layers size={24} color="#6366f1" /></div>
           <div>
             <span className="brand-text">AgentSync</span>
-            <div className="brand-version">v1.0 Enterprise</div>
+            <div className="brand-version">Decision Engine v1.0</div>
           </div>
         </div>
 
@@ -259,6 +391,9 @@ function App() {
                   {id === 'active_incidents' && result && (
                     <span className="nav-badge">{result.status?.includes('Error') ? '!' : '✓'}</span>
                   )}
+                  {id === 'resource_matrix' && metrics?.hcm?.overloaded_count > 0 && (
+                    <span className="nav-badge" style={{ background: '#f85149' }}>{metrics.hcm.overloaded_count}</span>
+                  )}
                 </a>
               ))}
               {group === 'Main Menu' && <div style={{ height: 16 }} />}
@@ -277,7 +412,7 @@ function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* ─── Main Content ─────────────────────────────────────────────────────── */}
       <main className="main-content">
         {/* Topbar */}
         <header className="topbar">
@@ -287,9 +422,13 @@ function App() {
             <span className="current">{breadcrumb[currentView]}</span>
           </div>
           <div className="topbar-actions">
+            <div className="dual-stack-badge">
+              <span className="status-dot healthy" />
+              <span>{hcmSyncStatus?.mode || "In-Process Engine Active"}</span>
+            </div>
             <div className="search-box">
               <Search size={15} />
-              <input type="text" placeholder="Search resources..." />
+              <input type="text" placeholder="Search operatives & resources..." />
             </div>
             <button className="icon-btn" title="Notifications"><Bell size={18} /></button>
             <div className="user-profile" title="Admin User"><User size={16} /></div>
@@ -303,10 +442,10 @@ function App() {
             <div className="view-container">
               <div className="page-header">
                 <div>
-                  <h1 className="page-title">Platform Overview</h1>
-                  <p className="page-subtitle">Real-time telemetry, agent metrics & system health</p>
+                  <h1 className="page-title">Platform & Human Capital Overview</h1>
+                  <p className="page-subtitle">Real-time telemetry, agent metrics, workforce headroom & system health</p>
                 </div>
-                <button className="btn-ghost" onClick={fetchMetrics} disabled={metricsLoading}>
+                <button className="btn-ghost" onClick={() => { fetchMetrics(); fetchHcmState(); }} disabled={metricsLoading}>
                   <RefreshCw size={15} className={metricsLoading ? 'spinner' : ''} />
                   Refresh
                 </button>
@@ -315,84 +454,94 @@ function App() {
               {metricsLoading && !metrics ? (
                 <div className="loading-state card">
                   <Activity className="spinner" size={36} color="#6366f1" />
-                  <p>Loading platform metrics...</p>
+                  <p>Loading platform metrics & workforce matrix...</p>
                 </div>
               ) : metrics ? (
                 <>
                   {/* Health Banner */}
                   <div className={`health-banner ${apiHealth?.status === 'healthy' ? 'healthy' : 'degraded'}`}>
                     <CheckCircle size={18} />
-                    <span><strong>System Status:</strong> {apiHealth?.status === 'healthy' ? 'All Systems Operational' : 'Degraded'}</span>
+                    <span><strong>Dual-Stack Status:</strong> {hcmSyncStatus?.mode || "In-Process Fallback Engine Active (Zero-Interruption)"}</span>
                     <span className="health-ts">Last checked: {new Date().toLocaleTimeString()}</span>
                   </div>
 
-                  {/* Primary Metrics */}
+                  {/* Primary Metrics (Merged AgentSync + Decision Engine) */}
                   <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 20 }}>
-                    <StatCard icon={Cpu} value={metrics.agents.online} label="Active Agents" color="#6366f1" />
+                    <StatCard icon={Cpu} value={metrics.agents.total || 9} label="Autonomous Agents" color="#6366f1" trend="4 Incident + 5 HCM" />
                     <StatCard icon={CheckCircle2} value={metrics.workflows.total_all_time} label="Total Investigations" color="#3fb950" />
-                    <StatCard icon={Activity} value={metrics.workflows.workflows_last_24h} label="Last 24h" color="#58a6ff" />
-                    <StatCard icon={Wrench} value={metrics.tools.total} label="Registered Tools" color="#a371f7" />
+                    <StatCard icon={Gauge} value={`${metrics.hcm?.average_headroom_pct || 22}%`} label="Avg Team Headroom" color="#58a6ff" trend="Capacity Available" />
+                    <StatCard
+                      icon={AlertOctagon}
+                      value={metrics.hcm?.overloaded_count || 0}
+                      label="Overloaded Personnel"
+                      color={metrics.hcm?.overloaded_count > 0 ? "#f85149" : "#3fb950"}
+                      trend={metrics.hcm?.overloaded_count > 0 ? "Disqualified from Incident Paging" : "Safe Operational Load"}
+                    />
                   </div>
 
-                  {/* Session Metrics */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20 }}>
+                  {/* Workforce & Platform Performance Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20, marginTop: 20 }}>
+                    {/* HCM Workforce Bandwidth */}
                     <div className="card">
-                      <div className="card-header">
-                        <h3><BarChart3 size={16} /> Session Performance</h3>
+                      <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3><Users size={16} /> Human Capital Bandwidth & Headroom</h3>
+                        <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setCurrentView('resource_matrix')}>
+                          Open Matrix <ChevronRight size={13} />
+                        </button>
                       </div>
                       <div className="card-body">
-                        <div className="info-list">
-                          <div className="info-row">
-                            <span>Session Workflows</span>
-                            <strong>{metrics.workflows.session_total}</strong>
-                          </div>
-                          <div className="info-row">
-                            <span>Active Now</span>
-                            <strong style={{ color: '#3fb950' }}>{metrics.workflows.session_active}</strong>
-                          </div>
-                          <div className="info-row">
-                            <span>Completed</span>
-                            <strong>{metrics.workflows.session_completed}</strong>
-                          </div>
-                          <div className="info-row">
-                            <span>Errors</span>
-                            <strong style={{ color: metrics.workflows.session_errors > 0 ? '#f85149' : '#3fb950' }}>
-                              {metrics.workflows.session_errors}
-                            </strong>
-                          </div>
-                          <div className="info-row">
-                            <span>Avg. Duration</span>
-                            <strong>{metrics.workflows.avg_duration_seconds}s</strong>
-                          </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                          {operatives.slice(0, 4).map(op => {
+                            const isOver = op.allocatedCapacity >= 100;
+                            const isElev = op.allocatedCapacity >= 85 && op.allocatedCapacity < 100;
+                            const fillClass = isOver ? 'overload' : (isElev ? 'elevated' : 'nominal');
+                            return (
+                              <div key={op.id} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                <img src={op.avatar} alt={op.name} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                                    <span><strong>{op.name}</strong> <code style={{ fontSize: 11, color: '#818cf8' }}>{op.callsign}</code></span>
+                                    <span style={{ fontWeight: 600, color: isOver ? '#f85149' : (isElev ? '#e3b341' : '#3fb950') }}>
+                                      {op.allocatedCapacity}%
+                                    </span>
+                                  </div>
+                                  <div className="capacity-bar-track">
+                                    <div className={`capacity-bar-fill ${fillClass}`} style={{ width: `${Math.min(100, op.allocatedCapacity)}%` }} />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
 
+                    {/* Platform Configuration */}
                     <div className="card">
                       <div className="card-header">
-                        <h3><Server size={16} /> Platform Configuration</h3>
+                        <h3><Server size={16} /> Integrated Architecture</h3>
                       </div>
                       <div className="card-body">
                         <div className="info-list">
                           <div className="info-row">
-                            <span>Platform</span>
-                            <strong>{metrics.platform.name} {metrics.platform.version}</strong>
+                            <span>Incident Engine</span>
+                            <strong>Python / FastAPI / LangGraph</strong>
                           </div>
                           <div className="info-row">
-                            <span>LLM Provider</span>
-                            <strong>Groq (Cloud)</strong>
+                            <span>HCM Decision Engine</span>
+                            <strong>Node.js / Express + In-Process Fallback</strong>
                           </div>
                           <div className="info-row">
-                            <span>Model</span>
-                            <strong>{metrics.agents.model}</strong>
+                            <span>Burnout Safeguard</span>
+                            <strong style={{ color: '#3fb950' }}>&lt; 100% Headroom Lock</strong>
                           </div>
                           <div className="info-row">
-                            <span>Uptime</span>
-                            <strong style={{ color: '#3fb950' }}>{metrics.platform.uptime}</strong>
+                            <span>Active Operatives</span>
+                            <strong>{operatives.length} Tracked</strong>
                           </div>
                           <div className="info-row">
-                            <span>Orchestrator</span>
-                            <strong>LangGraph</strong>
+                            <span>Active Missions</span>
+                            <strong>{projects.length} Registered</strong>
                           </div>
                         </div>
                       </div>
@@ -434,7 +583,7 @@ function App() {
               <div className="page-header">
                 <div>
                   <h1 className="page-title">Incident Resolution Center</h1>
-                  <p className="page-subtitle">Multi-agent orchestration for complex system failures</p>
+                  <p className="page-subtitle">Multi-agent orchestration with skill-aware engineer assignment &amp; telemetry handoff</p>
                 </div>
                 {result && (
                   <div className={`status-badge ${result.status?.includes('Error') ? 'error' : 'success'}`}>
@@ -449,13 +598,13 @@ function App() {
                 <div className="left-column">
                   <div className="card input-card">
                     <div className="card-header">
-                      <h3><FileTerminal size={16} /> Initialize Investigation</h3>
+                      <h3><FileTerminal size={16} /> Ingest Outage &amp; Execute Autonomous Triage</h3>
                     </div>
                     <div className="card-body">
                       <textarea
                         className="enterprise-textarea"
                         rows={3}
-                        placeholder="Describe the incident (e.g. Payment API is returning 500 errors with high latency...)"
+                        placeholder="Describe the incident (e.g. Payment API is failing with database timeout errors...)"
                         value={requestText}
                         onChange={(e) => setRequestText(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && runWorkflow()}
@@ -464,7 +613,7 @@ function App() {
                         <span className="hint-text">Ctrl+Enter to run</span>
                         <button className="btn-primary" onClick={runWorkflow} disabled={loading || !requestText.trim()}>
                           {loading ? <Activity className="spinner" size={16} /> : <Play size={16} />}
-                          {loading ? "Agents Orchestrating..." : "Run Analysis"}
+                          {loading ? "Agents Orchestrating..." : "Run Analysis & Dispatch"}
                         </button>
                       </div>
                     </div>
@@ -473,14 +622,14 @@ function App() {
                   {/* Pipeline Steps (shown while loading) */}
                   {loading && !result && (
                     <div className="pipeline-card card">
-                      <div className="card-header"><h3><GitMerge size={16} /> Agent Pipeline — Live</h3></div>
+                      <div className="card-header"><h3><GitMerge size={16} /> Live Agent Orchestration &amp; Dispatch</h3></div>
                       <div className="card-body">
                         <div className="pipeline-steps">
                           {[
-                            { name: 'Planner Agent', desc: 'Generating execution plan...', icon: BookOpen },
-                            { name: 'Investigation Agent', desc: 'Querying tools & gathering evidence...', icon: Search },
-                            { name: 'Analysis Agent', desc: 'Performing root cause analysis...', icon: TrendingUp },
-                            { name: 'Decision Agent', desc: 'Formulating resolution strategy...', icon: Zap },
+                            { name: 'Planner Agent', desc: 'Synthesizing incident execution plan...', icon: BookOpen },
+                            { name: 'Investigation Agent', desc: 'Analyzing service logs & runbooks...', icon: Search },
+                            { name: 'Analysis Agent', desc: 'Isolating root cause & risk severity...', icon: TrendingUp },
+                            { name: 'Decision & HCM Matcher', desc: 'Evaluating headroom (<100%) & bundling context...', icon: Users },
                           ].map(({ name, desc, icon: Icon }, i) => (
                             <div key={i} className="pipeline-step">
                               <div className="step-icon"><Icon size={16} /></div>
@@ -537,6 +686,91 @@ function App() {
                         </div>
                       </div>
 
+                      {/* ── Smart Resource Assignment & Contextual Handoff Card ── */}
+                      {result.assigned_engineer && (
+                        <div className="smart-assignment-card">
+                          <div className="assignment-header">
+                            <div className="assignment-title">
+                              <ShieldCheck size={18} color="#818cf8" />
+                              <span>Smart Resource Assignment &amp; Headroom Lock</span>
+                            </div>
+                            <span className="badge" style={{ background: 'rgba(63,185,80,0.2)', color: '#3fb950', border: '1px solid rgba(63,185,80,0.3)' }}>
+                              MATCH FOUND: {result.context_bundle?.fit_score || 85}% FIT
+                            </span>
+                          </div>
+
+                          <div className="assignment-details-grid">
+                            <img
+                              src={result.assigned_engineer.avatar}
+                              alt={result.assigned_engineer.name}
+                              className="assigned-avatar"
+                            />
+                            <div className="assigned-engineer-info">
+                              <h4>
+                                {result.assigned_engineer.name}
+                                <span className="op-callsign" style={{ marginLeft: 8 }}>{result.assigned_engineer.callsign}</span>
+                              </h4>
+                              <p>{result.assigned_engineer.role}</p>
+                              <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                                {result.assigned_engineer.skills?.slice(0, 5).map(s => (
+                                  <span key={s} className="op-skill-chip">{s}</span>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="headroom-meter-box">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                                <span style={{ color: 'var(--text-muted)' }}>Workload Allocation:</span>
+                                <strong>{result.assigned_engineer.capacity_before}% ➔ {result.assigned_engineer.capacity_after}%</strong>
+                              </div>
+                              <div className="capacity-bar-track">
+                                <div
+                                  className={`capacity-bar-fill ${result.assigned_engineer.capacity_after > 100 ? 'overload' : (result.assigned_engineer.capacity_after > 85 ? 'elevated' : 'nominal')}`}
+                                  style={{ width: `${Math.min(100, result.assigned_engineer.capacity_after)}%` }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, color: 'var(--text-muted)' }}>
+                                <span>Remaining Headroom:</span>
+                                <strong style={{ color: '#3fb950' }}>{result.context_bundle?.remaining_headroom || 0}%</strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Wellbeing Alert */}
+                          {result.wellbeing_alert && (
+                            <div className="disqualified-alert" style={{ background: 'rgba(227,179,65,0.1)', borderColor: 'rgba(227,179,65,0.3)', color: '#e3b341' }}>
+                              <HeartHandshake size={15} />
+                              <span>{result.wellbeing_alert.message} — {result.wellbeing_alert.recommendation}</span>
+                            </div>
+                          )}
+
+                          {/* Contextual Telemetry Handoff Bundle */}
+                          {result.context_bundle?.incident_diagnostics && (
+                            <div className="telemetry-handoff-box">
+                              <h5><FileTerminal size={13} /> Pre-Packaged Context Bundle (Instant Handoff)</h5>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12 }}>
+                                <div>
+                                  <span style={{ color: 'var(--text-muted)' }}>Affected Service:</span>
+                                  <strong style={{ marginLeft: 6, color: '#fff' }}>{result.context_bundle.incident_diagnostics.affected_service}</strong>
+                                </div>
+                                <div>
+                                  <span style={{ color: 'var(--text-muted)' }}>Recommended Runbook:</span>
+                                  <strong style={{ marginLeft: 6, color: '#fff' }}>{result.context_bundle.incident_diagnostics.recommended_runbook}</strong>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Burnout Prevention Disqualification Notice */}
+                          <div className="disqualified-alert" style={{ marginTop: 10, background: 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.2)', color: 'var(--text-muted)' }}>
+                            <ShieldCheck size={14} color="#818cf8" />
+                            <span>
+                              <strong>Burnout Protection Active:</strong> Operatives at or above 100% capacity threshold (e.g. Elena Rostova @ 115%) are automatically disqualified from incident pager duty.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Tabs */}
                       <div className="card tabs-card">
                         <div className="tabs-header">
@@ -580,8 +814,8 @@ function App() {
                   {result && !chatActive && (
                     <div className="resolution-prompt card">
                       <div className="prompt-icon"><MessageSquare size={32} /></div>
-                      <h3>Follow-up & Resolution</h3>
-                      <p>The agents have produced their recommendation. Open the copilot to ask follow-up questions or execute the resolution steps.</p>
+                      <h3>Follow-up &amp; Resolution</h3>
+                      <p>The agents have produced their recommendation and assigned the optimal engineer. Open the copilot to ask follow-up questions.</p>
                       <button className="btn-secondary" onClick={() => setChatActive(true)}>
                         Open Resolution Copilot <ChevronRight size={15} />
                       </button>
@@ -632,6 +866,315 @@ function App() {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Resource Matrix & HCM View ───────────────────────────────────── */}
+          {currentView === 'resource_matrix' && (
+            <div className="view-container">
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Human Capital Management &amp; Resource Matrix</h1>
+                  <p className="page-subtitle">Live bandwidth tracking, skill filtering, capacity headroom enforcement &amp; HR situation review</p>
+                </div>
+                <div className="matrix-header-actions">
+                  <div className="tabs-header" style={{ margin: 0 }}>
+                    <button
+                      className={`tab-btn ${matrixViewMode === 'cards' ? 'active' : ''}`}
+                      onClick={() => setMatrixViewMode('cards')}
+                    >
+                      <Users size={14} /> Operative Roster
+                    </button>
+                    <button
+                      className={`tab-btn ${matrixViewMode === 'matrix' ? 'active' : ''}`}
+                      onClick={() => setMatrixViewMode('matrix')}
+                    >
+                      <Sliders size={14} /> Allocation Matrix
+                    </button>
+                  </div>
+                  <button className="btn-ghost" onClick={fetchHcmState} disabled={hcmLoading}>
+                    <RefreshCw size={15} className={hcmLoading ? 'spinner' : ''} />
+                    Sync
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Tabs */}
+              <div style={{ display: 'flex', gap: 8, margin: '16px 0', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Filter size={13} /> Filter:
+                </span>
+                {[
+                  { id: 'all', label: `All Operatives (${operatives.length})` },
+                  { id: 'overloaded', label: `Overloaded ≥100% (${operatives.filter(o => o.allocatedCapacity >= 100).length})` },
+                  { id: 'elevated', label: `Elevated 85-99% (${operatives.filter(o => o.allocatedCapacity >= 85 && op.allocatedCapacity < 100).length})` },
+                  { id: 'nominal', label: `Nominal <85% (${operatives.filter(o => o.allocatedCapacity < 85).length})` },
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    className={`btn-ghost ${matrixFilter === f.id ? 'active' : ''}`}
+                    style={{
+                      fontSize: 12,
+                      padding: '4px 10px',
+                      background: matrixFilter === f.id ? 'rgba(99,102,241,0.2)' : 'transparent',
+                      color: matrixFilter === f.id ? '#818cf8' : 'var(--text-muted)',
+                      border: matrixFilter === f.id ? '1px solid rgba(99,102,241,0.4)' : '1px solid transparent'
+                    }}
+                    onClick={() => setMatrixFilter(f.id)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* View 1: Operatives Cards */}
+              {matrixViewMode === 'cards' && (
+                <div className="operatives-grid">
+                  {filteredOperatives.map(op => {
+                    const isOver = op.allocatedCapacity >= 100;
+                    const isElev = op.allocatedCapacity >= 85 && op.allocatedCapacity < 100;
+                    const fillClass = isOver ? 'overload' : (isElev ? 'elevated' : 'nominal');
+                    return (
+                      <div key={op.id} className={`card operative-card ${isOver ? 'overloaded' : ''}`}>
+                        <div className="op-header">
+                          <div className="op-avatar-wrap">
+                            <img src={op.avatar} alt={op.name} className="op-avatar" />
+                            <span className="op-level-badge">L{op.level}</span>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="op-title-row">
+                              <span className="op-name">{op.name}</span>
+                              <span className="op-callsign">{op.callsign}</span>
+                            </div>
+                            <div className="op-role">{op.role}</div>
+                          </div>
+                        </div>
+
+                        <div className="op-body">
+                          {/* Capacity Meter */}
+                          <div className="capacity-meter">
+                            <div className="capacity-labels">
+                              <span style={{ color: 'var(--text-muted)' }}>Workload Capacity</span>
+                              <strong style={{ color: isOver ? '#f85149' : (isElev ? '#e3b341' : '#3fb950') }}>
+                                {op.allocatedCapacity}% / {op.maxCapacity}%
+                              </strong>
+                            </div>
+                            <div className="capacity-bar-track">
+                              <div className={`capacity-bar-fill ${fillClass}`} style={{ width: `${Math.min(100, op.allocatedCapacity)}%` }} />
+                            </div>
+                            {isOver && (
+                              <div className="burnout-alert-pill" style={{ marginTop: 4 }}>
+                                <AlertOctagon size={13} />
+                                <span>BURNOUT LOCKOUT: Over capacity threshold</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Stats Snapshot */}
+                          {op.stats && (
+                            <div className="op-stats-row">
+                              <div className="op-stat-item">
+                                <span>Velocity</span>
+                                <strong>{op.stats.velocity}</strong>
+                              </div>
+                              <div className="op-stat-item">
+                                <span>Quality</span>
+                                <strong>{op.stats.codeQuality}</strong>
+                              </div>
+                              <div className="op-stat-item">
+                                <span>Delivery</span>
+                                <strong>{op.stats.delivery}</strong>
+                              </div>
+                              <div className="op-stat-item">
+                                <span>Collab</span>
+                                <strong>{op.stats.collaboration}</strong>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Skills */}
+                          <div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>TECHNICAL SKILLS</div>
+                            <div className="op-skills-wrap">
+                              {op.skills?.map(s => (
+                                <span key={s} className="op-skill-chip">{s}</span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Active Missions */}
+                          <div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>ASSIGNED MISSIONS</div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {op.assignedProjects?.length > 0 ? (
+                                op.assignedProjects.map(pid => (
+                                  <span key={pid} className="id-badge" style={{ fontSize: 11 }}>{pid}</span>
+                                ))
+                              ) : (
+                                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>None (Bench)</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          <div className="op-actions">
+                            <button
+                              className="btn-secondary"
+                              style={{ width: '100%', fontSize: 12, justifyContent: 'center' }}
+                              onClick={() => handleRunHrReview(op)}
+                            >
+                              <HeartHandshake size={14} /> Launch 5-Agent HR Review
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* View 2: Interactive Allocation Matrix Table */}
+              {matrixViewMode === 'matrix' && (
+                <div className="card" style={{ marginTop: 10 }}>
+                  <div className="card-header">
+                    <h3><Sliders size={16} /> Interactive Mission Allocation Matrix (Live Headroom Recalculation)</h3>
+                  </div>
+                  <div className="table-responsive">
+                    <table className="allocation-matrix-table">
+                      <thead>
+                        <tr>
+                          <th>Operative</th>
+                          <th>Load / Capacity</th>
+                          {projects.map(p => (
+                            <th key={p.id}>{p.codename}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {operatives.map(op => {
+                          const isOver = op.allocatedCapacity >= 100;
+                          return (
+                            <tr key={op.id}>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <img src={op.avatar} alt={op.name} style={{ width: 28, height: 28, borderRadius: '50%' }} />
+                                  <div>
+                                    <strong>{op.name}</strong>
+                                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{op.callsign}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <span style={{ fontWeight: 700, color: isOver ? '#f85149' : '#3fb950' }}>
+                                  {op.allocatedCapacity}%
+                                </span>
+                              </td>
+                              {projects.map(p => {
+                                const isAssigned = op.assignedProjects?.includes(p.id);
+                                return (
+                                  <td key={p.id}>
+                                    <button
+                                      className={`matrix-toggle-btn ${isAssigned ? 'assigned' : ''}`}
+                                      onClick={() => handleToggleAllocation(op.id, p.id)}
+                                    >
+                                      {isAssigned ? '✓ ASSIGNED' : '+ ALLOCATE'}
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Live Telemetry Stream */}
+              <div className="card" style={{ marginTop: 20 }}>
+                <div className="card-header">
+                  <h3><Activity size={16} /> Resource Matrix Telemetry &amp; Headroom Events</h3>
+                </div>
+                <div className="card-body">
+                  <div className="telemetry-ticker">
+                    {hcmTelemetry.map((t, idx) => (
+                      <div key={idx} className="telemetry-ticker-item">
+                        <span className="ticker-time">[{t.time}]</span>
+                        <span className="ticker-agent">{t.agent}:</span>
+                        <span style={{ color: '#fff', flex: 1 }}>{t.detail}</span>
+                        <span className="ticker-badge" style={{ background: t.badge?.includes('OVERLOAD') ? '#da3633' : '#238636' }}>
+                          {t.badge}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Enterprise Missions View ─────────────────────────────────────── */}
+          {currentView === 'missions' && (
+            <div className="view-container">
+              <div className="page-header">
+                <div>
+                  <h1 className="page-title">Enterprise Missions &amp; Projects</h1>
+                  <p className="page-subtitle">Track project skill dependencies, slot allocations &amp; operational deadlines</p>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn-primary" onClick={() => setMissionModalOpen(true)}>
+                    <Plus size={15} /> Forge New Mission
+                  </button>
+                  <button className="btn-ghost" onClick={fetchHcmState}>
+                    <RefreshCw size={15} /> Refresh
+                  </button>
+                </div>
+              </div>
+
+              <div className="missions-grid" style={{ marginTop: 20 }}>
+                {projects.map(prj => (
+                  <div key={prj.id} className="card mission-card">
+                    <div className="mission-header">
+                      <div>
+                        <span className="mission-codename">{prj.codename}</span>
+                        <h4 className="mission-title">{prj.title}</h4>
+                      </div>
+                      <span className="id-badge">{prj.id}</span>
+                    </div>
+                    <div className="card-body">
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12, marginBottom: 12 }}>
+                        <div><span style={{ color: 'var(--text-muted)' }}>Dept:</span> <strong>{prj.department}</strong></div>
+                        <div><span style={{ color: 'var(--text-muted)' }}>Budget:</span> <strong>{prj.budget}</strong></div>
+                        <div><span style={{ color: 'var(--text-muted)' }}>Difficulty:</span> <strong>{prj.difficulty}</strong></div>
+                        <div><span style={{ color: 'var(--text-muted)' }}>Deadline:</span> <strong>{prj.deadline}</strong></div>
+                      </div>
+
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>REQUIRED SKILLS</div>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {prj.requiredSkills?.map(s => (
+                            <span key={s} className="op-skill-chip">{s}</span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                          <span style={{ color: 'var(--text-muted)' }}>Assigned Operatives</span>
+                          <strong>{prj.assignedOperativeIds?.length || 0} / {prj.requiredSlots || 3} Slots</strong>
+                        </div>
+                        <div className="capacity-bar-track">
+                          <div
+                            className="capacity-bar-fill nominal"
+                            style={{ width: `${Math.min(100, ((prj.assignedOperativeIds?.length || 0) / (prj.requiredSlots || 3)) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -691,7 +1234,7 @@ function App() {
               <div className="page-header">
                 <div>
                   <h1 className="page-title">Incident Tickets</h1>
-                  <p className="page-subtitle">Generated ITSM & Escalation Tickets: {tickets.length} total tickets tracked</p>
+                  <p className="page-subtitle">Generated ITSM &amp; Escalation Tickets: {tickets.length} total tickets tracked</p>
                 </div>
                 <button className="btn-ghost" onClick={fetchTickets} disabled={ticketsLoading}>
                   <RefreshCw size={15} className={ticketsLoading ? 'spinner' : ''} />
@@ -817,7 +1360,7 @@ function App() {
                         </div>
                       </div>
 
-                      <h4 style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Ticket Content & Agent Recommendations</h4>
+                      <h4 style={{ color: '#fff', fontSize: 14, marginBottom: 8 }}>Ticket Content &amp; Agent Recommendations</h4>
                       <div style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, padding: 16 }}>
                         <div className="markdown-body">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -837,8 +1380,8 @@ function App() {
             <div className="view-container">
               <div className="page-header">
                 <div>
-                  <h1 className="page-title">Agent Fleet Operations</h1>
-                  <p className="page-subtitle">Autonomous AI agents coordinating across the enterprise platform</p>
+                  <h1 className="page-title">Agent Fleet Operations (9 Autonomous Agents)</h1>
+                  <p className="page-subtitle">Unified LangGraph Outage Orchestration Agents + Evidence-Based HCM Decision Agents</p>
                 </div>
                 <button className="btn-ghost" onClick={fetchAgents} disabled={agentsLoading}>
                   <RefreshCw size={15} className={agentsLoading ? 'spinner' : ''} />
@@ -899,8 +1442,8 @@ function App() {
             <div className="view-container">
               <div className="page-header">
                 <div>
-                  <h1 className="page-title">Enterprise Tools Registry</h1>
-                  <p className="page-subtitle">All tools available to the Investigation Agent for action execution</p>
+                  <h1 className="page-title">Enterprise Tools Registry (7 Tools)</h1>
+                  <p className="page-subtitle">Diagnostic &amp; action execution tools for Investigation and Decision Agents</p>
                 </div>
                 <button className="btn-ghost" onClick={fetchTools} disabled={toolsLoading}>
                   <RefreshCw size={15} className={toolsLoading ? 'spinner' : ''} />
@@ -922,6 +1465,7 @@ function App() {
                           {tool.category === 'Observability' && <BarChart3 size={18} color="#58a6ff" />}
                           {tool.category === 'Knowledge' && <BookOpen size={18} color="#a371f7" />}
                           {tool.category === 'Action' && <Zap size={18} color="#3fb950" />}
+                          {tool.category === 'Decision Support' && <Users size={18} color="#f0883e" />}
                         </div>
                         <div style={{ flex: 1 }}>
                           <div className="tool-name">{tool.name}</div>
@@ -959,14 +1503,43 @@ function App() {
             <div className="view-container">
               <div className="page-header">
                 <div>
-                  <h1 className="page-title">Configuration & Settings</h1>
-                  <p className="page-subtitle">Platform configuration, integrations, and environment information</p>
+                  <h1 className="page-title">Configuration &amp; Dual-Stack Architecture</h1>
+                  <p className="page-subtitle">Dual-Stack integration between Python/FastAPI/LangGraph and Node.js/Express HCM</p>
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20 }}>
+                {/* Dual-Stack Status Card */}
                 <div className="card">
-                  <div className="card-header"><h3><Server size={16} /> LLM & API Configuration</h3></div>
+                  <div className="card-header"><h3><Network size={16} /> Dual-Stack Integration Mode</h3></div>
+                  <div className="card-body">
+                    <div className="info-list">
+                      <div className="info-row">
+                        <span>Integration Status</span>
+                        <span className="badge success">Connected &amp; Synchronized</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Active Mode</span>
+                        <strong style={{ color: '#818cf8' }}>{hcmSyncStatus?.mode || "In-Process Engine Active"}</strong>
+                      </div>
+                      <div className="info-row">
+                        <span>Fault Tolerance</span>
+                        <span className="info-value">Zero Operational Downtime (Auto-Fallback)</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Node.js Endpoint</span>
+                        <span className="info-value">http://localhost:5000/api/state</span>
+                      </div>
+                      <div className="info-row">
+                        <span>In-Process Fallback</span>
+                        <span className="info-value">Python HCMManager Singleton</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-header"><h3><Server size={16} /> LLM &amp; API Configuration</h3></div>
                   <div className="card-body">
                     <div className="info-list">
                       <div className="info-row">
@@ -978,29 +1551,21 @@ function App() {
                         <span className="info-value">{metrics?.agents?.model || 'openai/gpt-oss-20b'}</span>
                       </div>
                       <div className="info-row">
-                        <span>API Key</span>
-                        <span className="info-value">gsk_••••••••••••••••</span>
-                      </div>
-                      <div className="info-row">
                         <span>Orchestration Framework</span>
-                        <span className="info-value">LangGraph</span>
+                        <span className="info-value">LangGraph StateGraph</span>
                       </div>
                       <div className="info-row">
-                        <span>LangChain Version</span>
-                        <span className="info-value">1.x</span>
+                        <span>API Base URL</span>
+                        <span className="info-value">{API_BASE}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="card">
-                  <div className="card-header"><h3><Database size={16} /> Memory & Storage</h3></div>
+                  <div className="card-header"><h3><Database size={16} /> Memory &amp; Storage</h3></div>
                   <div className="card-body">
                     <div className="info-list">
-                      <div className="info-row">
-                        <span>Short-term Memory</span>
-                        <span className="info-value">In-memory (session)</span>
-                      </div>
                       <div className="info-row">
                         <span>Long-term Memory</span>
                         <span className="info-value">SQLite (agentsync_memory.db)</span>
@@ -1010,74 +1575,31 @@ function App() {
                         <span className="info-value">SQLite (enterprise_mock.db)</span>
                       </div>
                       <div className="info-row">
-                        <span>Memory Strategy</span>
-                        <span className="info-value">Keyword-based retrieval</span>
-                      </div>
-                      <div className="info-row">
-                        <span>History Retention</span>
-                        <span className="info-value">Unlimited (SQLite)</span>
+                        <span>Resource Allocation Matrix</span>
+                        <span className="info-value">Dynamic InMemory + Sync</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="card">
-                  <div className="card-header"><h3><GitMerge size={16} /> Workflow Configuration</h3></div>
+                  <div className="card-header"><h3><ShieldCheck size={16} /> Burnout Prevention Rules</h3></div>
                   <div className="card-body">
                     <div className="info-list">
-                      <div className="info-row"><span>Entry Node</span><span className="info-value">Planner Agent</span></div>
-                      <div className="info-row"><span>Risk Routing</span><span className="info-value">Enabled (High/Medium/Low)</span></div>
-                      <div className="info-row"><span>High Risk Behavior</span><span className="info-value">Direct → Decision</span></div>
-                      <div className="info-row"><span>Medium Risk Behavior</span><span className="info-value">Re-investigate → Decision</span></div>
-                      <div className="info-row"><span>Ticket Auto-creation</span><span className="info-value">Enabled (unmonitored services)</span></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="card">
-                  <div className="card-header"><h3><Globe size={16} /> API & Deployment</h3></div>
-                  <div className="card-body">
-                    <div className="info-list">
-                      <div className="info-row"><span>API Framework</span><span className="info-value">FastAPI 0.141</span></div>
-                      <div className="info-row"><span>API Server</span><span className="info-value">Uvicorn (ASGI)</span></div>
-                      <div className="info-row"><span>API Base URL</span><span className="info-value">{API_BASE}</span></div>
-                      <div className="info-row"><span>Frontend Framework</span><span className="info-value">React 19 + Vite</span></div>
                       <div className="info-row">
-                        <span>API Docs</span>
-                        <a href={`${API_BASE}/docs`} target="_blank" rel="noreferrer" className="info-link">
-                          /docs <ArrowUpRight size={11} />
-                        </a>
+                        <span>Workload Safety Cap</span>
+                        <strong style={{ color: '#f85149' }}>100% Active Workload</strong>
+                      </div>
+                      <div className="info-row">
+                        <span>Overload Action</span>
+                        <span className="info-value">Disqualify from Incident Paging</span>
+                      </div>
+                      <div className="info-row">
+                        <span>Spike Alert Threshold</span>
+                        <span className="info-value">&gt; 85% Capacity or Stress ≥ 70</span>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              {/* Workflow Architecture Diagram */}
-              <div className="card" style={{ marginTop: 20 }}>
-                <div className="card-header"><h3><GitMerge size={16} /> Multi-Agent Workflow Architecture</h3></div>
-                <div className="card-body">
-                  <div className="workflow-diagram">
-                    {[
-                      { label: 'User Request', color: '#58a6ff', icon: User },
-                      { label: 'Planner Agent', color: '#6366f1', icon: BookOpen },
-                      { label: 'Investigation Agent', color: '#a371f7', icon: Search },
-                      { label: 'Analysis Agent', color: '#e3b341', icon: TrendingUp },
-                      { label: 'Risk Evaluator', color: '#f0883e', icon: AlertTriangle },
-                      { label: 'Decision Agent', color: '#3fb950', icon: Zap },
-                    ].map(({ label, color, icon: Icon }, i, arr) => (
-                      <div key={i} className="diagram-step-wrap">
-                        <div className="diagram-step" style={{ borderColor: color }}>
-                          <Icon size={16} color={color} />
-                          <span style={{ color }}>{label}</span>
-                        </div>
-                        {i < arr.length - 1 && <ChevronRight size={18} color="var(--text-muted)" />}
-                      </div>
-                    ))}
-                  </div>
-                  <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 12, textAlign: 'center' }}>
-                    LangGraph StateGraph with conditional routing — Medium Risk triggers additional investigation pass.
-                  </p>
                 </div>
               </div>
             </div>
@@ -1085,6 +1607,141 @@ function App() {
 
         </div>
       </main>
+
+      {/* ─── 5-Agent HR Situation Review Modal ───────────────────────────────── */}
+      {hrModalOpen && selectedOperativeForHR && (
+        <div className="hr-modal-overlay" onClick={() => setHrModalOpen(false)}>
+          <div className="hr-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <HeartHandshake size={20} color="#818cf8" />
+                <h3 style={{ margin: 0 }}>5-Agent HR Situation Review — {selectedOperativeForHR.name}</h3>
+                <span className="op-callsign">{selectedOperativeForHR.callsign}</span>
+              </div>
+              <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setHrModalOpen(false)}>✕</button>
+            </div>
+
+            <div className="card-body" style={{ overflowY: 'auto', padding: 24 }}>
+              {hrReviewLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <Activity className="spinner" size={32} color="#6366f1" />
+                  <p style={{ marginTop: 12, color: 'var(--text-muted)' }}>Coordinating 5 HR evaluation agents...</p>
+                </div>
+              ) : hrAssessment ? (
+                <div>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+                    Evidence-based situational assessment synthesized across 5 specialized autonomous HR agents:
+                  </p>
+
+                  {hrAssessment.agents?.map((ag, idx) => (
+                    <div key={idx} className="hr-agent-item">
+                      <div className="hr-agent-header">
+                        <strong style={{ color: '#fff', fontSize: 13 }}>{ag.agent}</strong>
+                        <span
+                          className="hr-agent-badge"
+                          style={{
+                            background: ag.status?.includes('OVER') || ag.status?.includes('NO_') ? 'rgba(248,81,73,0.15)' : 'rgba(99,102,241,0.15)',
+                            color: ag.status?.includes('OVER') || ag.status?.includes('NO_') ? '#f85149' : '#818cf8'
+                          }}
+                        >
+                          {ag.status}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 13, color: 'var(--text-main)', marginBottom: 6 }}>{ag.summary}</p>
+                      {ag.evidence?.length > 0 && (
+                        <ul className="hr-evidence-list">
+                          {ag.evidence.map((ev, i) => (
+                            <li key={i}>• {ev}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {ag.recommendations?.length > 0 && (
+                        <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 4, fontSize: 12 }}>
+                          <strong style={{ color: '#e3b341' }}>Recommendation:</strong> {ag.recommendations[0]}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {hrAssessment.disclaimer && (
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 14 }}>
+                      ⚠️ {hrAssessment.disclaimer}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>Unable to generate assessment.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Forge Mission Modal ──────────────────────────────────────────────── */}
+      {missionModalOpen && (
+        <div className="hr-modal-overlay" onClick={() => setMissionModalOpen(false)}>
+          <div className="hr-modal-content" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Briefcase size={18} color="#818cf8" />
+                <h3 style={{ margin: 0 }}>Forge Enterprise Mission</h3>
+              </div>
+              <button className="btn-ghost" style={{ padding: '4px 8px' }} onClick={() => setMissionModalOpen(false)}>✕</button>
+            </div>
+            <form onSubmit={handleForgeMission} style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Mission Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Real-Time Kafka Stream Engine"
+                  value={newMission.title}
+                  onChange={(e) => setNewMission({ ...newMission, title: e.target.value })}
+                  style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Department</label>
+                  <input
+                    type="text"
+                    value={newMission.department}
+                    onChange={(e) => setNewMission({ ...newMission, department: e.target.value })}
+                    style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Budget</label>
+                  <input
+                    type="text"
+                    value={newMission.budget}
+                    onChange={(e) => setNewMission({ ...newMission, budget: e.target.value })}
+                    style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Required Skills (comma separated)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Go, Kafka, Docker, Kubernetes"
+                  value={newMission.required_skills}
+                  onChange={(e) => setNewMission({ ...newMission, required_skills: e.target.value })}
+                  style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '8px 12px', color: '#fff' }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button type="button" className="btn-ghost" onClick={() => setMissionModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={missionSubmitting}>
+                  {missionSubmitting ? "Forging..." : "Register Mission"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

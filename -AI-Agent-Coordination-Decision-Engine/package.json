@@ -1,0 +1,16 @@
+{
+  "name": "workflow-decision-making-system",
+  "version": "1.0.0",
+  "description": "Workflow Decision Making System for employee workload, project fit, and HR decision support",
+  "scripts": {
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "server": "cd server && npm start",
+    "client": "cd client && npm run dev",
+    "hr": "py app.py",
+    "dev": "concurrently \"npm run server\" \"npm run client\" \"npm run hr\"",
+    "build": "cd client && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

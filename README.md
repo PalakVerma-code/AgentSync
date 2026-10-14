@@ -1,126 +1,153 @@
 # AgentSync: AI Agent Coordination & Decision Engine
 
-AgentSync is an enterprise-grade AI agent orchestration platform designed to automate complex multi-step business workflows and IT incident resolution. By coordinating specialized autonomous agents across a structured state graph, the engine streamlines triage, evidence gathering, root cause analysis, mitigation planning, and incident ticket lifecycle management.
+AgentSync is an enterprise-grade AI agent orchestration platform that seamlessly bridges autonomous IT incident resolution with Human Capital Management (HCM) resource allocation. By uniting a Python/FastAPI + LangGraph incident engine with a real-time Resource Allocation Matrix and evidence-based HR decision agents, the platform automates end-to-end triage, evidence gathering, root cause analysis, capacity-headroom-aware engineer assignment, and telemetry-bundled ticketing.
 
 ---
 
-## Key Capabilities
+## 📋 Key Capabilities
 
-- **State-Graph Orchestration**: Built on LangGraph, coordinating agents through deterministic transitions and conditional risk-routing paths.
-- **Specialized Agent Fleet**: Discrete agents for Planning, Investigation, Analysis, and Decision support, eliminating single-prompt bottlenecks.
-- **Integrated Tool Execution**: Native ReAct tool calling to inspect service health, parse system logs, search runbooks, check external dependencies, and manage tickets.
-- **Dual-Layer Memory**:
-  - *Short-Term Working Memory*: Graph state passing between pipeline stages.
-  - *Long-Term Episodic Memory*: SQLite persistence (`agentsync_memory.db`) for precedent retrieval and decision consistency.
-- **Automated Escalation & Ticketing**: Automatically generates tracked incident tickets and escalation records for unmonitored systems.
-- **Enterprise Web Dashboard**: Modern React 19 interface providing real-time telemetry, workflow execution, incident history, ticket management, and an interactive resolution copilot.
+- **Dual-Stack Integration & Zero-Downtime Fallback**: Bridges Python/FastAPI/LangGraph with Node.js/Express HCM services, with an automatic in-process fallback engine ensuring zero operational downtime if auxiliary services disconnect.
+- **Autonomous Outage Triage**: LangGraph agents continuously ingest diagnostic logs, service health, and runbooks to isolate root causes without manual hunting.
+- **Strict Skill-Aware Matching**: Evaluates incident error signatures against operative capability profiles to match qualified engineers.
+- **Burnout Prevention Engine**: Enforces a strict `< 100%` active workload capacity threshold to disqualify overloaded personnel (e.g. Dr. Elena Rostova @ 115%) from incident paging.
+- **Contextual Handoff & Telemetry Bundles**: Pre-packages root cause analyses, stack traces, and mitigation runbooks directly into incident tickets and engineer assignment payloads.
+- **Wellbeing Safeguard & Stress Monitoring**: Features a 5-agent HR review engine (Workload, Project Fit, Performance, Availability, and Wellbeing Check-in) that flags workload spikes for proactive managerial review.
+- **Unified Single-Interface Web Console**: A dark-mode, glassmorphic React 19 interface providing real-time telemetry, interactive project allocation toggles, an HR review drawer, an incident resolution runner, and ticket management.
 
 ---
 
-## System Architecture
+## ⚙️ Architecture & Execution Workflow
 
 ```
-[ User Incident Request ]
-           │
-           ▼
-    ┌──────────────┐
-    │ Planner Agent│ ── Formulates step-by-step investigation strategy
-    └──────┬───────┘
-           │
-           ▼
-    ┌─────────────────────┐
-    │ Investigation Agent │ ── Executes tools dynamically (Logs, Health, DB, APIs)
-    └──────┬──────────────┘
-           │
-           ▼
-    ┌────────────────┐
-    │ Analysis Agent │ ── Determines root cause, impact, and risk classification
-    └──────┬─────────┘
-           │
-           ▼
-    ┌─────────────────┐
-    │ Risk Evaluation │ ── Routes: High Risk -> Escalation | Low/Med -> Decision
-    └──────┬──────────┘
-           │
-           ▼
-    ┌────────────────┐
-    │ Decision Agent │ ── Synthesizes resolution plan & manages ticket actions
-    └──────┬─────────┘
-           │
-     ┌─────┴───────────────┐
-     ▼                     ▼
-[ Long-Term Memory ]  [ Incident Tickets ]
+[ Incoming Outage / Telemetry Alert ]
+                 │
+                 ▼
+          ┌──────────────┐
+          │ Planner Agent│ ── Formulates structured investigation checklist
+          └──────┬───────┘
+                 │
+                 ▼
+       ┌─────────────────────┐
+       │ Investigation Agent │ ── Calls 7 enterprise tools (Logs, Health, DB, APIs)
+       └──────┬──────────────┘
+              │
+              ▼
+       ┌────────────────┐
+       │ Analysis Agent │ ── Isolates root cause & risk classification (P1/P2/P3)
+       └──────┬─────────┘
+              │
+              ▼
+       ┌─────────────────┐
+       │ Risk Evaluation │ ── Routes: High Risk -> Immediate | Med -> Re-investigate
+       └──────┬──────────┘
+              │
+              ▼
+       ┌────────────────┐
+       │ Decision Agent │ ── Synthesizes resolution SOP & triggers HCM Matcher
+       └──────┬─────────┘
+              │
+              ▼
+   ┌───────────────────────┐
+   │ Resource Matrix Match │ ── Evaluates skills + enforces strict <100% capacity
+   └──────┬───────────────┘
+          │
+    ┌─────┴─────────────────────────┐
+    ▼                               ▼
+[ Optimal Engineer Assigned ]  [ Overloaded Personnel Disqualified ]
+(e.g., Tariq Mansoor @ 75%)    (e.g., Dr. Elena Rostova @ 115% Lockout)
+    │
+    ▼
+[ Pre-Packaged Context Bundle ] ── Root cause + SOP + Logs attached to Ticket
 ```
 
-### The Agent Fleet
+---
 
-| Agent | Role | Responsibility |
+## 🤖 The 9-Agent Fleet
+
+The coordination engine deploys 9 discrete agents across two integrated tiers:
+
+### 1. Incident Resolution & Orchestration Tier (LangGraph)
+| Agent | Role | Capabilities |
 | :--- | :--- | :--- |
-| **Planner Agent** | Strategy | Analyzes the initial report and defines a prioritized investigation checklist. |
-| **Investigation Agent** | Research / ReAct | Autonomously calls tools to gather diagnostics, inspect databases, and query knowledge bases. |
-| **Analysis Agent** | Diagnostics | Synthesizes technical evidence into root cause assessments and business risk tiers. |
-| **Decision Agent** | Action / Resolution | Cross-references historical memory to prescribe mitigation plans and generate tickets. |
+| **Planner Agent** | Strategy | Incident decomposition, execution planning, tool sequencing. |
+| **Investigation Agent** | Research / ReAct | Multi-tool invocation, log parsing, service probing, runbook search. |
+| **Analysis Agent** | Diagnostics | Root cause identification, risk assessment, business impact scoring. |
+| **Decision Agent** | Action / Dispatch | Mitigation formulation, ticket creation, contextual telemetry bundling. |
+
+### 2. Human Capital Management (HCM) Decision Engine Tier
+| Agent | Role | Capabilities |
+| :--- | :--- | :--- |
+| **Workload Agent** | Capacity Enforcement | Tracks allocation %, enforces `< 100%` headroom threshold, prevents alert fatigue. |
+| **Project Fit Agent** | Talent Matching | Vector skill-profile indexing, incident domain mapping, fit score calculation. |
+| **Performance Agent** | Operational Metrics | Analyzes historical incident resolution velocity, code quality, and delivery track records. |
+| **Availability Agent** | Scheduling | Assesses active commitments, deadlines, and on-call bandwidth reservations. |
+| **Employee Wellbeing Agent**| Safety & Burnout | Monitors stress indices, detects rapid load spikes, triggers early HR interventions. |
 
 ---
 
-## Tool Ecosystem
-
-The Investigation and Decision agents leverage tools configured in `tools/`:
+## 🛠️ Enterprise Tool Ecosystem (7 Tools)
 
 1. **`service_health_tool`**: Inspects real-time service health, latency, CPU, and error metrics from `enterprise_mock.db`.
-2. **`log_analyzer_tool`**: Parses application logs to detect stack traces, timeout patterns, and error spikes.
-3. **`incident_history_tool`**: Retrieves past service outages to cross-reference known failure modes.
+2. **`log_analyzer_tool`**: Parses application logs to detect stack traces, timeout patterns, and error anomalies.
+3. **`incident_history_tool`**: Retrieves past service outages to cross-reference known failure modes and historical fixes.
 4. **`knowledge_base_tool`**: Queries standard operating procedures (SOPs) and runbooks for remediation steps.
-5. **`external_api_tool`**: Validates upstream and third-party service reachability via HTTP probes.
+5. **`external_api_tool`**: Validates upstream and third-party service reachability via live HTTP GET probes.
 6. **`incident_action_tool`**: Programmatically creates, escalates, and resolves tickets in the ITSM system.
+7. **`resource_matrix_tool` (`query_resource_matrix`)**: Queries real-time HCM capacity, skill matches, and workload headroom for smart engineer assignment.
 
 ---
 
-## Technology Stack
+## 💻 Technology Stack
 
 - **Backend Framework**: Python 3.10+, FastAPI, Uvicorn
-- **Orchestration**: LangGraph, LangChain Core
-- **LLM Provider**: Groq API (`openai/gpt-oss-20b` high-speed reasoning)
-- **Frontend Dashboard**: React 19, Vite, Lucide Icons, ReactMarkdown
+- **Agent Orchestration**: LangGraph, LangChain Core
+- **LLM Reasoning**: Groq API (`openai/gpt-oss-20b` high-speed inference)
+- **Frontend Console**: React 19, Vite, Lucide Icons, ReactMarkdown, CSS Design System
+- **Dual-Stack Integration**: Node.js/Express HCM REST microservice + In-Process Python Fallback
 - **Persistence**: SQLite3 (`agentsync_memory.db` for memory, `enterprise_mock.db` for simulated telemetry)
-- **Testing**: Pytest, HTTPX TestClient
+- **Testing**: Pytest (37 unit & integration tests)
 
 ---
 
-## Project Structure
+## 📁 Repository Structure
 
 ```
 AgentSync/
-├── agents/                     # Specialized agent definitions
+├── agents/                     # LangGraph incident agents
 │   ├── planner_agent.py
 │   ├── investigation_agent.py
 │   ├── analysis_agent.py
 │   └── decision_agent.py
-├── api/                        # FastAPI application endpoints
+├── api/                        # FastAPI REST application & HCM endpoints
 │   └── main.py
 ├── config/                     # Environment configuration and settings
 │   └── settings.py
-├── frontend/                   # React 19 + Vite web console
+├── frontend/                   # React 19 + Vite unified operations console
 │   ├── src/
-│   │   ├── App.jsx             # Dashboard, workflow runner, tickets, and settings
-│   │   ├── App.css
+│   │   ├── App.jsx             # Unified dashboard, incident runner, matrix, tickets
+│   │   ├── App.css             # Glassmorphic cyber-enterprise design system
 │   │   └── main.jsx
 │   ├── package.json
 │   ├── vercel.json             # Vercel SPA routing configuration
 │   └── vite.config.js
+├── hcm/                        # Decision Engine HCM subsystem
+│   ├── hcm_manager.py          # Operative roster, matrix toggles, headroom lock
+│   └── hr_agents.py            # 5 evidence-based situational review agents
 ├── memory/                     # Long-term memory management
 │   └── memory_manager.py
-├── tests/                      # Automated test suite (30 unit & integration tests)
+├── tests/                      # Automated test suite (37 passing tests)
 │   ├── test_agents.py
 │   ├── test_api.py
+│   ├── test_hcm.py
 │   └── test_tools.py
-├── tickets/                    # Auto-generated incident tickets (Markdown artifacts)
+├── tickets/                    # Auto-generated incident tickets with context bundles
 ├── tools/                      # Enterprise simulation and diagnosis tools
 │   ├── external_api_tool.py
 │   ├── incident_action_tool.py
 │   ├── incident_history_tool.py
 │   ├── knowledge_base_tool.py
 │   ├── log_analyzer_tool.py
+│   ├── resource_matrix_tool.py
 │   └── service_health_tool.py
 ├── utils/                      # Structured logging and telemetry utilities
 │   └── logging_config.py
@@ -134,7 +161,7 @@ AgentSync/
 
 ---
 
-## Local Setup & Quick Start
+## 🚀 Local Setup & Quick Start
 
 ### 1. Prerequisites
 - Python 3.10 or higher
@@ -163,7 +190,7 @@ python setup_db.py
 # Start the FastAPI server
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
-API Documentation will be available at `http://localhost:8000/docs`.
+Interactive API Documentation is available at `http://localhost:8000/docs`.
 
 ### 4. Frontend Setup
 In a new terminal window:
@@ -172,21 +199,21 @@ cd frontend
 npm install
 npm run dev
 ```
-The console will be accessible at `http://localhost:5173`.
+The unified web console will be accessible at `http://localhost:5173`.
 
 ---
 
-## Verification & Testing
+## 🧪 Verification & Testing
 
-Execute the comprehensive test suite covering agents, tools, API contracts, and ticket flows:
+Execute the comprehensive test suite covering all agents, tools, API contracts, HCM headroom enforcement, and ticket workflows:
 ```bash
 pytest tests/ -v
 ```
-All 30 unit and integration tests are verified and passing.
+All **37 unit and integration tests** pass verified.
 
 ---
 
-## Production Deployment
+## 🌐 Production Deployment
 
 - **Frontend**: Deployed on **Vercel** (`https://agent-sync.vercel.app`) using SPA rewrites configured in `frontend/vercel.json`.
 - **Backend**: Deployed on **Render** as a persistent web service executing `uvicorn api.main:app --host 0.0.0.0 --port $PORT`.
